@@ -105,6 +105,30 @@
       "imageSha256": "8fe5d7ac3f235400fafc3f22edc2841ffa7355d752d23b4044706b73924c5c1f",
       "alt": "A glowing golden sun on the left and a separate silver crescent moon on the right hover side by side, flooding a cozy room with golden and silvery light.",
       "generatedWith": "codex-native-image-generation"
+    },
+    {
+      "id": "1d2a9b61-fedb-4074-a1bc-707e8d2f8081",
+      "entry": {
+        "traditional": "桌",
+        "simplified": "桌",
+        "pinyin": "zhuo1",
+        "definitions": [
+          "table",
+          "desk",
+          "classifier for tables of guests at a banquet etc"
+        ]
+      },
+      "type": "sound",
+      "cue": "draw",
+      "description": "Zhuo sounds a bit like draw, so i imagine drawing on the table with crayons or something",
+      "songArtist": "",
+      "songTitle": "",
+      "requestId": "8c915b28-3c0f-4ed7-9df1-61d05fc11ddc",
+      "image": "/associations/8c915b28-3c0f-4ed7-9df1-61d05fc11ddc.png",
+      "imageSha256": "366696b9862b2a54d95fe03f51cb58e064f3fc9c77df06737b19b929a63eb3b0",
+      "alt": "A smiling adult draws a heart directly on a wooden table with a purple crayon, surrounded by scattered crayons and colorful drawings of flowers, a rainbow, a sun, and a cat.",
+      "generatedWith": "codex-native-image-generation",
+      "updatedAt": "2026-11-03T10:16:23.194Z"
     }
   ]
 }
