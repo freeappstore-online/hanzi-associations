@@ -19,6 +19,14 @@
     "build": "pnpm --filter @hanzi-associations/web build",
     "preview": "pnpm --filter @hanzi-associations/web preview",
     "typecheck": "pnpm --filter @hanzi-associations/web exec tsc -b",
-    "test": "pnpm build && node --test scripts/styling.test.mjs"
-  }
+    "test": "pnpm test:unit && pnpm validate:associations && pnpm build && node --test scripts/styling.test.mjs",
+    "test:unit": "node --import tsx --test tests/*.test.ts",
+    "test:browser": "playwright test",
+    "validate:associations": "node --import tsx scripts/validate-associations.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "tsx": "^4.23.15"
+  },
+  "type": "module"
 }

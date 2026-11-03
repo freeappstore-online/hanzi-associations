@@ -1,16 +1,24 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   plugins: [
+    {
+      name: 'yi-build-receipt',
+      generateBundle() {
+        this.emitFile({ type: 'asset', fileName: 'build.json', source: JSON.stringify({ app: 'Yi', commit: loadEnv('production', '.', 'VITE_').VITE_COMMIT_SHA || 'development', builtAt: new Date().toISOString() }) })
+      },
+    },
     react(),
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        globPatterns: ['**/*.{js,css,html,png,svg,ico,woff2,wasm,json}'],
+        globPatterns: ['**/*.{js,css,html,png,svg,ico,woff2,json}'],
+        // Never precache mutable publication data or the lazy dictionary.
+        globIgnores: ['associations/**', 'dictionary/**'],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         // Force the new SW to activate immediately instead of waiting for
         // all tabs to close. Combined with registerType: 'autoUpdate' this

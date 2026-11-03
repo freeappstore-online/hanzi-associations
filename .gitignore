@@ -9,3 +9,8 @@ dist
 
 # VibeCode QA reports (regenerated on each scan)
 .vibe-check/
+
+# Local verification artifacts
+playwright-report/
+test-results/
+artifacts/

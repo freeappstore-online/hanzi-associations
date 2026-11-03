@@ -57,19 +57,19 @@
 
 :root {
   color-scheme: light;
-  --paper: #ffffff;
-  --paper-deep: #f7f7f7;
-  --ink: #111111;
-  --muted: #666666;
+  --paper: #fbf8f0;
+  --paper-deep: #f2eee3;
+  --ink: #263c35;
+  --muted: #63716a;
   --line: rgba(0, 0, 0, 0.08);
   --line-strong: rgba(0, 0, 0, 0.14);
   --panel: #ffffff;
   --panel-glass: rgba(255, 255, 255, 0.72);
   --panel-strong: rgba(255, 255, 255, 0.88);
   --panel-quiet: rgba(255, 255, 255, 0.6);
-  --accent: #d86f4d;
-  --accent-soft: #ffd4bf;
-  --accent-deep: #9f4427;
+  --accent: #216454;
+  --accent-soft: #e4efe6;
+  --accent-deep: #154637;
   --sky: #4c97b5;
   --sky-soft: #c6e6f2;
   --sky-deep: #245b73;
@@ -110,19 +110,19 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --paper: #000000;
-  --paper-deep: #0a0a0a;
+  --paper: #172421;
+  --paper-deep: #1e302a;
   --ink: #f0f0f0;
-  --muted: #888888;
+  --muted: #b1c4b9;
   --line: rgba(255, 255, 255, 0.08);
   --line-strong: rgba(255, 255, 255, 0.14);
-  --panel: #121212;
+  --panel: #21362e;
   --panel-glass: rgba(18, 18, 18, 0.8);
   --panel-strong: rgba(18, 18, 18, 0.92);
   --panel-quiet: rgba(22, 22, 22, 0.8);
-  --accent: #ff9b76;
-  --accent-soft: #3b2119;
-  --accent-deep: #ffd9cb;
+  --accent: #a9ddc0;
+  --accent-soft: #2b4c3b;
+  --accent-deep: #c8f0d9;
   --sky: #89cbe5;
   --sky-soft: #122632;
   --sky-deep: #d3f0fb;
@@ -156,43 +156,13 @@ html {
 
 body {
   min-height: 100dvh;
-  background:
-    radial-gradient(circle at top left, var(--bg-blob-1), transparent 32%),
-    radial-gradient(circle at top right, var(--bg-blob-2), transparent 30%),
-    linear-gradient(180deg, var(--bg-start) 0%, var(--bg-mid) 52%, var(--bg-end) 100%);
+  background: var(--paper);
   color: var(--ink);
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
   letter-spacing: -0.015em;
-}
-
-body::before,
-body::after {
-  content: '';
-  position: fixed;
-  inset: auto;
-  pointer-events: none;
-  z-index: -1;
-  border-radius: 999px;
-  filter: blur(70px);
-}
-
-body::before {
-  left: -10rem;
-  top: 10rem;
-  height: 20rem;
-  width: 20rem;
-  background: var(--glow-warm);
-}
-
-body::after {
-  right: -8rem;
-  bottom: 8rem;
-  height: 18rem;
-  width: 18rem;
-  background: var(--glow-cool);
 }
 
 #root {
@@ -213,9 +183,10 @@ button, a, nav, [role="button"], label {
   letter-spacing: -0.04em;
 }
 
-::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+input, textarea, select { min-width: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 
 button,
@@ -237,15 +208,6 @@ button:focus-visible,
 a:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--sky) 52%, white);
   outline-offset: 3px;
-}
-
-@media (min-width: 1024px) {
-  body {
-    background:
-      radial-gradient(circle at 18% 8%, var(--bg-blob-1), transparent 24%),
-      radial-gradient(circle at 88% 14%, var(--bg-blob-2), transparent 24%),
-      linear-gradient(180deg, var(--bg-start) 0%, var(--bg-mid) 48%, var(--bg-end) 100%);
-  }
 }
 
 /* Shell's text-size preference scales rem-based app typography. */

@@ -1,54 +1,80 @@
-# template-standalone
+# Yi
 
-The standalone-app template used by [`fas init`](https://github.com/freeappstore-online/platform/tree/main/packages/cli) to scaffold new free apps for [FreeAppStore](https://freeappstore.online).
+Chinese words, vivid memories. A mobile-first dictionary and mnemonic image
+notebook at https://yi.freeappstore.online. The original
+https://hanzi-associations.freeappstore.online remains supported.
 
-You almost certainly want to use the CLI, not clone this directly:
+- Search 125,356 CC-CEDICT entries by simplified/traditional hanzi, pinyin, or
+  English. Filter words or single characters and choose alternate readings.
+- Save sound, character, or meaning associations locally; revise descriptions
+  and optional music cues; import/export JSON backups.
+- Publish images through the owner's private PAGS artist using direct Codex
+  subscription CLI sessions. A real native-generated yellow-chair image is
+  included in `web/public/associations/chair-easy-v1.png`.
 
-```bash
-npm i -g @freeappstore/cli
-fas init my-app
-```
+## Development
 
-The CLI clones this template, replaces every `hanzi-associations` placeholder with your app id, runs `git init`, and makes the first commit — the result is a runnable app you can `pnpm dev` immediately.
+Node 22+, pnpm. `pnpm install`, then `pnpm dev`.
 
-## What's in here
+- `pnpm test`: unit tests, published-asset validation, typecheck/build, SDK styling.
+- `pnpm test:browser`: Playwright Chromium mobile + desktop workflows.
+- `pnpm validate:associations`: exact dictionary entries, safe paths, raster
+  signatures, unique IDs, and SHA-256. Also visually inspect every new image.
+- `fas check`: platform compliance. `git push origin main` deploys through Actions.
 
-- `web/` — Vite + React + TypeScript + Tailwind 4 app, ESM-only.
-- `web/src/App.tsx` — the app wrapped in the SDK's `Shell` (`@freeappstore/sdk/ui`) with two starter screens, Home (`/`) and About (`/about`), declared in its `nav` prop. A new app renders the standard topbar, its navigation (`<nav aria-label="Main">`), an error boundary, toasts and an offline banner from the first render. No sign-in required.
-- `web/src/index.css` — brand fonts (Manrope + Fraunces) and the design tokens (`--paper`, `--ink`, `--accent`, …); dark mode via `:root[data-theme='dark']`, which the SDK sets from the system or the Shell's theme toggle.
-- `web/src/main.tsx` — React entry point.
-- `web/index.html` — links Manrope + Fraunces, sets PWA meta tags, references the manifest.
-- `web/public/manifest.json` — PWA manifest with `name`, `display`, `start_url`.
-- `package.json` — pnpm workspace, `dev` / `build` / `typecheck` / `test` scripts.
-- `.github/workflows/compliance.yml` — runs the same checks as `fas check` on every PR. Source of truth lives in the [`@freeappstore/compliance`](https://www.npmjs.com/package/@freeappstore/compliance) package.
+If Playwright Chromium is missing, install it with `pnpm exec playwright install chromium`.
+Local screenshots and traces are gitignored under artifacts/ and test-results/.
 
-## Cloning manually (not recommended)
+## Connection and publication
 
-If you really want to scaffold by hand:
+The browser discovers `https://mcp.proagentstore.online/.well-known/oauth-authorization-server`
+and registers a public OAuth client (`token_endpoint_auth_method: none`).
+Authorization Code + PKCE S256 requests only `read runtime`. State is single use
+and expires after ten minutes. Tokens stay in sessionStorage, are never logged
+or exported, and expire according to the server; reconnect rather than retain
+refresh tokens. The callback query is removed immediately.
 
-```bash
-git clone https://github.com/freeappstore-online/template-standalone my-app
-cd my-app
-# Replace hanzi-associations → my-app in package.json, web/index.html, web/src/App.tsx, README, etc.
-rm -rf .git && git init
-pnpm install && pnpm dev
-```
+The official `@modelcontextprotocol/sdk` uses `/mcp`, discovers tool schemas,
+and validates input before each call. Only the seven required read/message
+tools are allowed. Ownership is checked before instance reads. The artist
+must be the account's active `abfc80a9-a7c3-4951-b7b3-85f826e4fdfa`, bound only
+to `repo_5d14d39b-dfdb-4a4e-a94b-a71c7a11b6d6` / this repository, with default
+Codex subscription billing. An active session must be on that repo and Codex,
+idle, alive, ready, and without another owner before dispatch. No account
+configuration is changed by Yi.
 
-Then run `fas publish` to provision repo + hosting + DNS, or open the [submission form](https://github.com/freeappstore-online/submissions/issues/new) for maintainer review.
+`coding_session_message` has no server-side idempotency parameter. Yi uses Web
+Locks across tabs, writes a local durable request receipt before sending, and
+never automatically resends an uncertain request. It reconciles sessions and
+polls timeline/capture every 12 seconds while visible. A lost acknowledgement
+can remain uncertain and require owner investigation in PAGS. This prevents
+blind retries; it cannot enforce a cross-device server lock. Do not clear a
+pending receipt to bypass it. Queued means acknowledged, generating means the
+associated session is working, deploying means a commit is reported or only
+part of the asset deployment is live. Published requires a matching deployed
+index record and raster SHA-256. See ASSOCIATIONS.md for the agent contract.
 
-## License
+Dictionary and local drafts require no account. Other PAGS users cannot target
+this owner's private artist. The live OAuth approval and browser-to-CLI publish
+flow require that owner's account and an idle runner. Automated tests use
+synthetic OAuth/MCP responses; they never dispatch a real coding turn.
 
-MIT.
+## Privacy, data and offline behaviour
 
-## Mobile viewport defaults
+No analytics loader or AI API key is included. The SDK Shell supplies navigation,
+theme and accessible dialogs; background SDK diagnostic uploads are disabled.
+Drafts use localStorage, session tokens use sessionStorage, and backups contain
+only draft fields. Storage failures are visible and block publishing. Published
+images and all association metadata are public. Hostnames have separate browser
+storage; export/import to move drafts when switching hosts.
 
-The app starts at device width with page zoom restricted by the viewport meta tag
-and `touch-action: pan-x pan-y` in `web/src/index.css`. The root clips horizontal
-page overflow; vertical scrolling and explicit inner scrollers remain available.
-Keep layouts responsive at 320px and put wide tables/carousels in their own scroll
-containers. Maps and game canvases can handle their own gestures.
+The dictionary gzip (served as cedict.bin to avoid automatic HTTP decompression) is fetched lazily into a Web Worker on first search. It is
+not in the initial JS graph or service-worker precache; a new offline page may
+need to reconnect for dictionary search. Publication data is never precached.
+Browsers need DecompressionStream, Web Crypto and Web Locks for full support.
+Songs are title/artist with an external YouTube search link; no audio is copied.
 
-These defaults also apply when launched from the home screen. Browser or accessibility
-settings can override zoom restrictions. For an app that needs browser pinch zoom,
-remove `maximum-scale` and `user-scalable` from `web/index.html` and change the root
-`touch-action` rules to `manipulation`. Keep the app's text-size controls available.
+App code: MIT. Dictionary: CC-CEDICT / MDBG, snapshot 2026-11-02, unchanged
+125,356-entry gzip, CC BY-SA 4.0. See `web/public/dictionary/NOTICE.txt`; its
+license applies separately to dictionary data and adaptations. Tone-mark and
+search normalization happen in memory and never replace source pronunciation.

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "associations": [
+    {
+      "id": "chair-easy",
+      "requestId": "seed-chair-easy-v1",
+      "entry": {
+        "traditional": "椅子",
+        "simplified": "椅子",
+        "pinyin": "yi3 zi5",
+        "definitions": [
+          "chair",
+          "CL:把[ba3],張|张[zhang1]"
+        ]
+      },
+      "type": "sound",
+      "cue": "easy",
+      "description": "A vivid sunshine-yellow chair, as soft and padded as a beanbag, raised on visible wooden legs. An adult sinks into the cushions, smiling and visibly relaxing. A warm, playful room with a small music player in the background: everything feels easy.",
+      "songTitle": "Easy",
+      "songArtist": "Faith No More",
+      "updatedAt": "2026-11-03T06:17:00.000Z",
+      "image": "/associations/chair-easy-v1.png",
+      "imageSha256": "1b1611c4868a28dc3263ed1d99a1f34d09a9a1b21297bb3d93ba69f20d93c012",
+      "alt": "An adult relaxes deeply in a bright yellow, beanbag-shaped chair on four wooden legs, with a small radio and a musical note nearby.",
+      "generatedWith": "codex-native-image-generation"
+    }
+  ]
+}

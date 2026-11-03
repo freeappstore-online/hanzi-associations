@@ -1,0 +1,12 @@
+CC-CEDICT — Community maintained Chinese-English dictionary, published by MDBG.
+Snapshot 2026-11-02T01:18:15Z; 125,356 entries. Downloaded 2026-11-03.
+Source: https://www.mdbg.net/chinese/dictionary?page=cc-cedict
+Download: https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz
+License: Creative Commons Attribution-ShareAlike 4.0 International
+https://creativecommons.org/licenses/by-sa/4.0/
+Based on CEDICT, copyright (C) 1997, 1998 Paul Andrew Denisowski.
+The bundled cedict.bin contains unchanged gzip bytes (extension avoids HTTP auto-decoding). Its header preserves source attribution.
+Yi's runtime parser converts numbered pinyin into tone marks and builds a search
+index in memory; no dictionary entries or definitions are invented by AI.
+Dictionary data and adaptations remain CC BY-SA 4.0, separately from MIT app code.
+Contribute corrections: https://cc-cedict.org/editor/editor.php
