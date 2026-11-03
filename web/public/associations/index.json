@@ -23,6 +23,88 @@
       "imageSha256": "1b1611c4868a28dc3263ed1d99a1f34d09a9a1b21297bb3d93ba69f20d93c012",
       "alt": "An adult relaxes deeply in a bright yellow, beanbag-shaped chair on four wooden legs, with a small radio and a musical note nearby.",
       "generatedWith": "codex-native-image-generation"
+    },
+    {
+      "id": "book-shoe",
+      "requestId": "seed-book-shoe-v1",
+      "entry": {
+        "traditional": "書",
+        "simplified": "书",
+        "pinyin": "shu1",
+        "definitions": [
+          "book",
+          "letter",
+          "document",
+          "CL:本[ben3],冊|册[ce4],部[bu4]",
+          "to write"
+        ]
+      },
+      "type": "sound",
+      "cue": "shoe",
+      "description": "An enormous open hardback book becomes a wearable shoe. Cream pages curl around a visible socked foot, bright coral laces thread through the turquoise cover, and an adult takes a playful step through a sunlit library. The impossible book-shoe links the meaning of 书 to “shoe”, an approximate sound cue for shū; the Mandarin pronunciation and first tone stay separate.",
+      "songTitle": "",
+      "songArtist": "",
+      "updatedAt": "2026-11-03T06:45:18.066Z",
+      "image": "/associations/seed-book-shoe-v1.png",
+      "imageSha256": "a70807657619d70e234ab6b1a7655f97378cc7a9a660f7293a35bc6f68ca14e2",
+      "alt": "An adult steps through a warm library wearing an enormous turquoise hardback book as a shoe, with cream pages around a socked foot and coral laces through the cover.",
+      "generatedWith": "codex-native-image-generation"
+    },
+    {
+      "id": "cow-new",
+      "requestId": "seed-cow-new-v1",
+      "entry": {
+        "traditional": "牛",
+        "simplified": "牛",
+        "pinyin": "niu2",
+        "definitions": [
+          "ox",
+          "cow",
+          "bull",
+          "CL:條|条[tiao2],頭|头[tou2]",
+          "newton (abbr. for 牛頓|牛顿[niu2 dun4])",
+          "(slang) awesome"
+        ]
+      },
+      "type": "sound",
+      "cue": "new",
+      "description": "A proud black-and-white cow struts through a sunny meadow in four sparkling, brand-new turquoise and coral sneakers, one on each hoof. An open shoebox and fresh tissue paper lie beside it. The cow showing off something new connects 牛 to “new”, an approximate sound cue for niú; the real Mandarin pronunciation and rising tone remain separate.",
+      "songTitle": "",
+      "songArtist": "",
+      "updatedAt": "2026-11-03T06:45:18.066Z",
+      "image": "/associations/seed-cow-new-v1.png",
+      "imageSha256": "51c25ec28d7da55dfc0a6c2cf0842af8abfd85d0df0bb008a3734cfcd6e5e69b",
+      "alt": "A smiling black-and-white cow raises one front hoof to show off its four pristine turquoise and coral sneakers, beside an open shoebox and tissue paper in a sunny meadow.",
+      "generatedWith": "codex-native-image-generation"
+    },
+    {
+      "id": "bright-sun-moon",
+      "requestId": "seed-bright-sun-moon-v1",
+      "entry": {
+        "traditional": "明",
+        "simplified": "明",
+        "pinyin": "ming2",
+        "definitions": [
+          "bright",
+          "opposite: dark 暗[an4]",
+          "(of meaning) clear",
+          "to understand",
+          "next",
+          "public or open",
+          "wise",
+          "generic term for a sacrifice to the gods"
+        ]
+      },
+      "type": "character",
+      "cue": "日 (sun) + 月 (moon) → bright",
+      "description": "A radiant golden sun floats on the left and a luminous silver crescent moon floats on the right, clearly separated and side by side in a cozy room. Together they wash the floor and furnishings in brilliant golden and silvery light, banishing the darkness. Remember 明, bright, by picturing its visible 日 (sun) and 月 (moon) components shining together. This is a visual component mnemonic, not an etymology claim.",
+      "songTitle": "",
+      "songArtist": "",
+      "updatedAt": "2026-11-03T06:45:18.066Z",
+      "image": "/associations/seed-bright-sun-moon-v1.png",
+      "imageSha256": "8fe5d7ac3f235400fafc3f22edc2841ffa7355d752d23b4044706b73924c5c1f",
+      "alt": "A glowing golden sun on the left and a separate silver crescent moon on the right hover side by side, flooding a cozy room with golden and silvery light.",
+      "generatedWith": "codex-native-image-generation"
     }
   ]
 }
