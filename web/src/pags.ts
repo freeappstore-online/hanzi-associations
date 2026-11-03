@@ -3,6 +3,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv'
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
+import { reportedOutcome, requestTurn, isRequestTurn, incompleteEvent, timelineSchema, type Outcome } from './outcome'
 import { getSession, ISSUER, type OAuthSession } from './oauth'
 import { assertBinding, assertTarget, generationInstruction, INSTANCE_ID, REPO_ID, loadPending, loadReceipts, pendingSchema, savePending, sessionList, type Pending } from './generation'
 import { fetchIndex, verifyImage, type Store, type Published } from './model'
@@ -11,7 +12,6 @@ const required = ['my_instances', 'coding_repos_list', 'coding_engine_get', 'cod
 const allowed = [...required, 'whoami'] as const
 type ToolName = typeof allowed[number]
 const captureSchema = z.object({ sessionId: z.string().optional(), runState: z.string(), runnerConnected: z.boolean(), alive: z.boolean().optional(), ready: z.boolean().optional(), authPrompt: z.unknown().optional(), pane: z.string().optional(), ownership: z.object({ owners: z.array(z.unknown()) }).optional() })
-const timelineSchema = z.object({ sessionId: z.string().nullable().optional(), repoId: z.string().nullable().optional(), nextSeq: z.number().optional(), events: z.array(z.object({ seq: z.number(), type: z.string(), content: z.string().optional() })) })
 
 export class StatusUnavailable extends Error {}
 class AccessDenied extends Error {}
@@ -171,7 +171,7 @@ export class Pags {
       }
       this.#assertCurrent()
       if (revision !== this.#revision) throw new Error('Verification changed before sending. Nothing was sent.')
-      const pending: Pending = { ...valid, sessionId: session?.id, sinceSeq, status: 'uncertain', detail: 'Sending once. If the response is lost, Yi will reconcile this request without resending.' }
+      const pending: Pending = { ...valid, sessionId: session?.id, sinceSeq, dispatchSeq: sinceSeq, status: 'uncertain', detail: 'Sending once. If the response is lost, Yi will reconcile this request without resending.' }
       savePending(storage, pending)
       onUpdate(pending)
       this.#assertCurrent()
@@ -205,17 +205,59 @@ export class Pags {
       // Find the opaque session id by observing the request marker, never by guessing.
       for (const candidate of sessions.filter(s => s.repoId === REPO_ID && s.clientType === 'codex').slice(0, 5)) {
         const timeline = timelineSchema.parse(await this.#call('coding_timeline', { instance_id: INSTANCE_ID, session_id: candidate.id, limit: 40 }))
-        if (timeline.events.some(e => e.content?.includes(`YI_ASSOCIATION_REQUEST ${request.id}`))) { sid = candidate.id; break }
+        if (timeline.repoId && timeline.repoId !== REPO_ID || timeline.sessionId && timeline.sessionId !== candidate.id) throw new Error('The request session no longer matches Yi.')
+        if (timeline.events.some(e => requestTurn(e, request.id) || reportedOutcome(e, request.id))) { sid = candidate.id; break }
       }
     }
     if (!sid) return request.status === 'deploying' ? request : { ...request, status: 'uncertain', detail: 'Delivery is still unconfirmed. The request will not be resent. Check the artist’s timeline in PAGS.' }
-    const timeline = timelineSchema.parse(await this.#call('coding_timeline', { instance_id: INSTANCE_ID, session_id: sid, limit: 40, ...(request.sinceSeq !== undefined ? { since_seq: request.sinceSeq } : {}) }))
-    if (timeline.repoId && timeline.repoId !== REPO_ID || timeline.sessionId && timeline.sessionId !== sid) throw new Error('The request session no longer matches Yi.')
-    // Only exact standalone marker lines qualify; the original prompt contains inline examples.
-    const report = timeline.events.filter(e => e.type !== 'user' && e.type !== 'instruction').map(e => e.content || '').join('\n')
-    const next = { ...request, sessionId: sid, sinceSeq: timeline.nextSeq ?? request.sinceSeq }
-    if (new RegExp(`^YI_FAILED ${request.id} [^\n]+$`, 'm').test(report)) return { ...next, status: 'failed', detail: 'The artist reported a failure. Review its PAGS timeline for the exact blocker, revise if needed, and publish again.' }
-    if (new RegExp(`^YI_COMMITTED ${request.id} [a-f0-9]{40}$`, 'm').test(report)) return { ...next, status: 'deploying', detail: 'The artist reports a pushed commit. Waiting for the deployed index and verified image.' }
+    const recovering = request.dispatchSeq === undefined
+    let cursor = recovering ? undefined : request.sinceSeq ?? request.dispatchSeq
+    let before: number | undefined
+    let nextSeq = request.sinceSeq
+    let outcome: Outcome | undefined
+    let dispatchSeq = request.dispatchSeq
+    let turn = request.requestTurnSeq
+    let superseded = request.superseded ?? false
+    const events: z.infer<typeof timelineSchema>['events'] = []
+    let incomplete = false
+    for (let page = 0; page < 5; page++) {
+      // since_seq reads oldest->newest. before reads a newest page backwards.
+      // These modes are mutually exclusive in the PAGS API.
+      const timeline = timelineSchema.parse(await this.#call('coding_timeline', { instance_id: INSTANCE_ID, session_id: sid, limit: 40, ...(recovering ? before !== undefined ? { before } : {} : { since_seq: cursor }) }))
+      if (timeline.repoId && timeline.repoId !== REPO_ID || timeline.sessionId && timeline.sessionId !== sid) throw new Error('The request session no longer matches Yi.')
+      if (recovering ? page === 0 : true) nextSeq = timeline.nextSeq === undefined ? nextSeq : Math.max(nextSeq ?? 0, timeline.nextSeq)
+      const relevant = timeline.events.filter(e => recovering || cursor === undefined || e.seq > cursor)
+      events.push(...relevant)
+      for (const event of relevant) {
+        const found = reportedOutcome(event, request.id)
+        if (found === 'failed' || found && !outcome) outcome = found
+      }
+      if (outcome === 'failed') break
+      if (relevant.some(incompleteEvent) || (timeline.truncated?.events ?? 0) > timeline.events.filter(e => (e.chars ?? 0) > (e.content?.length ?? 0)).length) { incomplete = true; break }
+      const boundary = recovering && relevant.find(e => requestTurn(e, request.id))
+      if (boundary) { dispatchSeq = Math.max(0, boundary.seq - 1); break }
+      if (!timeline.hasMore) break
+      if (page === 4) { incomplete = true; break }
+      if (recovering) {
+        if (timeline.oldestSeq === undefined || before !== undefined && timeline.oldestSeq >= before || !this.#schemas.get('coding_timeline')?.inputSchema.properties?.before) { incomplete = true; break }
+        before = timeline.oldestSeq
+      } else {
+        if (timeline.nextSeq === undefined || cursor !== undefined && timeline.nextSeq <= cursor) { incomplete = true; break }
+        cursor = timeline.nextSeq
+      }
+    }
+    // A later user turn can be unrelated code work. A busy session alone is not
+    // evidence this image is generating. Only the matched latest request turn is.
+    for (const event of events.sort((a, b) => a.seq - b.seq)) {
+      if (!isRequestTurn(event)) continue
+      if (turn !== undefined && event.seq <= turn) continue
+      if (requestTurn(event, request.id)) turn = event.seq
+      else if (turn !== undefined) superseded = true
+    }
+    if (incomplete && outcome !== 'failed') return { ...request, sessionId: sid, status: request.status === 'deploying' || outcome === 'deploying' ? 'deploying' : 'uncertain', detail: 'Status unavailable: activity is incomplete. Review the artist in PAGS. The saved cursor is unchanged and nothing will be resent.' }
+    const next = { ...request, sessionId: sid, sinceSeq: recovering && dispatchSeq === undefined && !outcome ? request.sinceSeq : nextSeq, dispatchSeq, requestTurnSeq: turn, superseded }
+    if (outcome === 'failed') return { ...next, status: 'failed', detail: 'The artist reported a failure. Review its PAGS timeline for the blocker. This request will not be resent.' }
+    if (outcome === 'deploying') return { ...next, status: 'deploying', detail: 'The artist reports a pushed commit. Waiting for the deployed index and verified image.' }
     // The cursor may have moved past YI_COMMITTED. A busy session is weaker
     // evidence than that durable receipt; only explicit failure or live proof
     // may replace the publishing state.
@@ -223,9 +265,9 @@ export class Pags {
     if (session?.id === sid) {
       const capture = captureSchema.parse(await this.#call('coding_session_capture', { instance_id: INSTANCE_ID, session_id: sid }))
       if (capture.sessionId && capture.sessionId !== sid) throw new Error('The request session no longer matches Yi.')
-      if (!capture.runnerConnected || capture.authPrompt) return { ...next, detail: 'The artist is offline or needs sign-in. This request remains pending; it will not be resent.' }
-      if (capture.runState === 'thinking' || capture.runState === 'responding') return { ...next, status: 'generating', detail: 'The request’s Codex session is working. Publication is not yet verified.' }
+      if (!capture.runnerConnected || capture.authPrompt) return { ...next, status: 'uncertain', detail: 'The artist is offline or needs sign-in. This request remains pending; it will not be resent.' }
+      if (turn !== undefined && !superseded && (capture.runState === 'thinking' || capture.runState === 'responding')) return { ...next, status: 'generating', detail: 'The request’s Codex session is working. Publication is not yet verified.' }
     }
-    return { ...next, detail: 'No deployed result yet. Check the artist in PAGS if it needs attention. Yi will not resend this request.' }
+    return { ...next, status: request.status === 'queued' && !recovering && !superseded ? 'queued' : 'uncertain', detail: 'No request-specific progress is confirmed. The artist may have stopped or moved to other work. Review it in PAGS; Yi will not resend this request.' }
   }
 }

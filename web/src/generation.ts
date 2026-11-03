@@ -8,7 +8,10 @@ export const PENDING_KEY = 'yi.publish.pending.v1'
 export const pendingSchema = z.object({
   id: z.string().uuid(), draft: draftSchema, createdAt: z.string().datetime(),
   status: z.enum(['queued', 'generating', 'deploying', 'uncertain', 'failed', 'published']),
-  detail: z.string().max(1000), sessionId: z.string().optional(), sinceSeq: z.number().optional(),
+  detail: z.string().max(1000), sessionId: z.string().optional(), sinceSeq: z.number().int().nonnegative().optional(),
+  // Immutable dispatch floor, separate from the advancing read cursor.
+  dispatchSeq: z.number().int().nonnegative().optional(),
+  requestTurnSeq: z.number().int().nonnegative().optional(), superseded: z.boolean().optional(),
 })
 export type Pending = z.infer<typeof pendingSchema>
 export function loadPending(store: Store): Pending | null {

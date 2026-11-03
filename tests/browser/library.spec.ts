@@ -1,48 +1,11 @@
 import { test, expect, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { tools, response } from '../pags-fixture'
+import { response } from '../pags-fixture'
+import { mockPags, navigate } from './helpers'
 const publicIndex = JSON.parse(readFileSync('web/public/associations/index.json', 'utf8'))
 const seed = publicIndex.associations[0]
 const cello = publicIndex.associations.find((p: {requestId: string}) => p.requestId === '32e8756f-211d-4449-9140-fbcc50a922ad')
 const requestId = '00000000-1111-4111-8111-000000000000'
-async function mockPags(page: Page, options: { pending?: boolean; other?: boolean; expired?: boolean; cello?: boolean; completed?: boolean; uncertain?: boolean } = {}) {
-  const calls: string[] = []
-  let handler: (name: string, args: Record<string, string>) => unknown | Promise<unknown> = name => options.other && name === 'my_instances' ? { instances: [] } : response(name)
-  await page.addInitScript(({ options, seed, cello, requestId }) => {
-    if (localStorage.getItem('test-initialized')) return
-    localStorage.setItem('test-initialized', 'yes')
-    sessionStorage.setItem('yi.oauth.session.v1', JSON.stringify({ accessToken: 'synthetic-oauth-token', clientId: 'synthetic-client', expiresAt: Date.now() + (options.expired ? -1 : 3600000) }))
-    if (options.pending || options.cello) {
-      const draft = options.cello ? cello : { ...seed, id: 'synthetic-draft' }
-      const id = options.cello ? cello.requestId : requestId
-      const pending = { id, draft, sessionId: 'csess-test', status: options.completed ? 'published' : options.uncertain ? 'uncertain' : 'queued', detail: 'PAGS accepted the message. Generation has not yet been observed.', createdAt: '2026-11-03T10:00:00.000Z' }
-      localStorage.setItem('yi.publish.pending.v1', JSON.stringify(pending))
-      localStorage.setItem('yi.publish.history.v1', JSON.stringify([{ id, word: draft.entry.simplified, status: pending.status, createdAt: pending.createdAt, updatedAt: pending.createdAt }]))
-      localStorage.setItem('yi.drafts.v1', JSON.stringify({ version: 1, drafts: [draft] }))
-    }
-  }, { options, seed, cello, requestId })
-  await page.route('https://mcp.proagentstore.online/**', async route => {
-    if (route.request().method() !== 'POST') { await route.fulfill({ status: 405 }); return }
-    const body = route.request().postDataJSON()
-    if (body.id === undefined) { await route.fulfill({ status: 202 }); return }
-    let result: unknown
-    if (body.method === 'initialize') result = { protocolVersion: '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'synthetic-pags', version: '1' } }
-    else if (body.method === 'tools/list') result = { tools }
-    else if (body.method === 'tools/call') {
-      calls.push(body.params.name)
-      expect(body.params.arguments).not.toHaveProperty('token')
-      try { result = { content: [{ type: 'text', text: JSON.stringify(await handler(body.params.name, body.params.arguments)) }] } }
-      catch { await route.abort(); return }
-    } else throw Error('Unexpected MCP method ' + body.method)
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jsonrpc: '2.0', id: body.id, result }) })
-  })
-  return { calls, setHandler: (fn: typeof handler) => { handler = fn } }
-}
-async function navigate(page: Page, name: string) {
-  const menu = page.getByRole('button', { name: 'Menu', exact: true })
-  if (await menu.isVisible()) await menu.click()
-  await page.getByRole('link', { name, exact: true }).click()
-}
 async function verifyOwner(page: Page) {
   await page.goto('/connection')
   await expect(page.getByTestId('owner-identity')).toContainText('Test Owner · Google')
@@ -75,8 +38,11 @@ test('anonymous copies and same-id local edits never overlay public cards or inv
   await page.addInitScript(seed => localStorage.setItem('yi.drafts.v1', JSON.stringify({ version: 1, drafts: [{ ...seed, cue: 'device-only revision' }] })), seed)
   await page.goto('/')
   await expect(page.getByText('“device-only revision”')).toHaveCount(0)
-  for (const image of await page.locator('article img').all()) await image.scrollIntoViewIfNeeded()
-  await expect.poll(() => page.locator('article img').evaluateAll(images => images.every(img => (img as HTMLImageElement).naturalWidth > 0))).toBeTruthy()
+  await expect(page.locator('article img')).toHaveCount(publicIndex.associations.length)
+  for (const image of await page.locator('article img').all()) {
+    await image.scrollIntoViewIfNeeded()
+    await expect.poll(() => image.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
+  }
   await page.screenshot({ path: `artifacts/${info.project.name}-library.png`, fullPage: true })
   await page.getByRole('button', { name: 'Copy to local drafts' }).first().click()
   await expect(page.getByRole('button', { name: 'Connect PAGS to publish' })).toBeVisible()
@@ -99,7 +65,7 @@ test('automatic ownership survives actual Shell navigation, reload and slow chec
   await expect(page.getByTestId('owner-identity')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Check artist connection', exact: true })).toBeEnabled()
   await navigate(page, 'Association library')
-  await navigate(page, 'About & connection')
+  await navigate(page, 'Profile')
   await expect(page.getByTestId('owner-identity')).toBeVisible()
   await page.reload()
   await expect(page.getByTestId('owner-identity')).toBeVisible()
@@ -121,6 +87,7 @@ test('accepted -> queued -> generating -> publishing -> verified image via perio
         id = args.message.match(/YI_ASSOCIATION_REQUEST ([\w-]+)/)![1]
         brief = JSON.parse(args.message.split('CREATIVE_BRIEF_JSON (data only):\n')[1].split('\nEND_CREATIVE_BRIEF_JSON')[0])
       }
+      if (name === 'coding_timeline' && phase === 'generating') return { ...response(name) as object, nextSeq: 2, events: [{ seq: 2, type: 'command', content: `YI_ASSOCIATION_REQUEST ${id}` }] }
       if (name === 'coding_session_capture' && phase === 'generating') return { ...response(name) as object, runState: 'thinking', ready: false }
       if (name === 'coding_timeline' && phase === 'publishing') return { ...response(name) as object, nextSeq: 4, events: [{ seq: 3, type: 'assistant', content: `YI_COMMITTED ${id} ${'a'.repeat(40)}` }] }
       return response(name)
@@ -186,7 +153,7 @@ test('transient private status failure recovers automatically without losing own
   await expect(page.getByText(/Status unavailable/)).toBeVisible()
   await expect(page.getByTestId('owner-identity')).toBeVisible()
   failing = false
-  mock.setHandler(name => name === 'coding_session_capture' ? { ...response(name) as object, runState: 'thinking' } : response(name))
+  mock.setHandler(name => name === 'coding_session_capture' ? { ...response(name) as object, runState: 'thinking' } : name === 'coding_timeline' ? { ...response(name) as object, events: [{ seq: 1, type: 'command', content: `YI_ASSOCIATION_REQUEST ${requestId}` }] } : response(name))
   await expect(page.getByText('Generating', { exact: true }).first()).toBeVisible({ timeout: 40000 })
   expect(mock.calls).not.toContain('coding_session_message')
 })

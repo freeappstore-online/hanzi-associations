@@ -55,7 +55,7 @@ work; ordinary public browsing without pending work never invokes PAGS. A lost a
 can remain uncertain and require owner investigation in PAGS. This prevents
 blind retries; it cannot enforce a cross-device server lock. Do not clear a
 pending receipt to bypass it. Queued means acknowledged, generating means the
-associated session is working, deploying means a commit is reported or only
+latest attributable request turn is working, deploying means a commit is reported or only
 part of the asset deployment is live. Published requires a matching deployed
 index record and raster SHA-256. See ASSOCIATIONS.md for the agent contract.
 
@@ -69,19 +69,31 @@ synthetic OAuth/MCP responses; they never dispatch a real coding turn.
 
 ## Public library and owner connection
 
+`/profile` consolidates FreeAppStore account preferences and PAGS connections,
+including when signed out. Both navigation and the signed-in SDK avatar lead
+there via Shell `profileHref` (SDK 0.16.6). SDK ProfilePage retains theme/text size,
+friends, API-key management, sign-out and account controls. FAS and PAGS remain
+independent; neither sign-out clears drafts or receipts. `/about` contains story
+and credits. `/connection` remains a Profile alias and the registered OAuth
+callback; reconnect does not change its redirect URI.
+
+GitHub Reconnect links to https://proagentstore.online/console/preferences. It
+manages the PAGS platform connection, not the remote artist machine's GitHub CLI
+login. Yi does not infer live GitHub health from old failure receipts.
+
 The landing page is Association library; `/lookup` is dictionary search. Public
 cards and local drafts are separate views. A copied public card gets its own local
 ID, and a local revision never changes the visible public library.
 
-FreeAppStore and PAGS sign-ins are independent. Only authenticated PAGS `whoami`
-identity (login/provider) is displayed, with an honest owner-verification fallback
+FreeAppStore and PAGS sign-ins are independent. The displayed PAGS identity comes
+from authenticated `whoami` (login/provider), with an honest owner-verification fallback
 if identity metadata is unavailable. No name is hardcoded. Verification lasts for
 the current valid OAuth session, is revoked on expiry/disconnect/session changes
 or explicit access denial. Slow checks, transient read failures and a busy runner
 do not erase known ownership. All guards run again before dispatch. Generation consumes the
 connected owner's Codex subscription; public browsing does not.
 
-Opening a draft, Local drafts or About & connection automatically checks a saved
+Opening a draft, Local drafts or Profile automatically checks a saved
 PAGS session. There is no persisted trusted ownership flag. Draft cards and editors
 show Draft, Queued, Generating, Publishing, Published or Failed, and explain
 unconfirmed delivery, unavailable status or a needed connection. Saving and editing

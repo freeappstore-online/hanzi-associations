@@ -1,18 +1,20 @@
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { initApp } from '@freeappstore/sdk'
-import { Badge, BuildInfo, Card, EmptyState, Modal, PageHeader, SearchInput, Shell, Spinner, Tabs, useToast, type NavItem } from '@freeappstore/sdk/ui'
+import { Badge, BuildInfo, EmptyState, Modal, PageHeader, SearchInput, Shell, Spinner, Tabs, useToast, type NavItem } from '@freeappstore/sdk/ui'
 import { entryKey, normalizePinyin, toneMarks, type Entry, type Filter } from './dictionary'
 import { backupSchema, fetchIndex, importDrafts, loadDrafts, draftSchema, newDraft, saveDrafts, type Draft, type Published } from './model'
 import { finishOAuth } from './oauth'
-import { type Receipt } from './generation'
 import { usePublication } from './usePublication'
-import { activeRequest, draftProgress, statusLabel } from './publication'
-import type { OwnerVerification } from './pags'
+import { activeRequest, draftProgress } from './publication'
+import { Button, Notice } from './ui'
+import { Profile } from './Profile'
+import { About } from './About'
 
 const NAV: NavItem[] = [
   { label: 'Association library', href: '/', title: 'Association library — Yi' },
   { label: 'Look up', href: '/lookup', title: 'Look up — Yi' },
-  { label: 'About & connection', href: '/connection', title: 'About & connection — Yi' },
+  { label: 'Profile', href: '/profile', title: 'Profile — Yi' },
+  { label: 'About', href: '/about', title: 'About — Yi' },
 ]
 // Capture and remove OAuth parameters before rendering external links or starting requests.
 const callback = new URL(window.location.href)
@@ -23,9 +25,6 @@ const fas = initApp({ appId: 'hanzi-associations' })
 // Keep private learning activity local; no background diagnostic uploads.
 fas.log.destroy()
 
-function Button({ secondary, className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { secondary?: boolean }) {
-  return <button {...props} className={`min-h-11 rounded-xl px-4 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${secondary ? 'border border-line-strong bg-panel text-ink hover:bg-paper-deep' : 'bg-accent text-paper hover:bg-accent-hover'} ${className}`} />
-}
 function Label({ children, title, hint }: { children: ReactNode; title: string; hint?: string }) {
   return <label className="grid gap-2 text-sm font-semibold">{title}{children}{hint && <span className="text-xs font-normal leading-relaxed text-muted">{hint}</span>}</label>
 }
@@ -40,7 +39,7 @@ export default function App() {
     return () => window.removeEventListener('popstate', sync)
   }, [])
   const navigate = (href: string) => { window.history.pushState(null, '', href); setPath(href) }
-  return <Shell app={fas} appName="Yi" nav={NAV} onNavigate={navigate}>
+  return <Shell profileHref="/profile" app={fas} appName="Yi" nav={NAV} onNavigate={navigate}>
     <Workspace path={path} />
     <BuildInfo />
   </Shell>
@@ -57,8 +56,8 @@ function Workspace({ path }: { path: string }) {
   const [draftWorkflow, setDraftWorkflow] = useState(false)
   const loaded = useRef(false)
   const damaged = useRef(false)
-  const publication = usePublication(Boolean(editor) || draftWorkflow || ['/connection', '/about'].includes(path), published, [...drafts.map(d => d.id), ...(editor ? [editor.id] : [])], setPublished)
-  const { connected, verified, receipts, busy, pending, receiptError, checking, checkConnection, checkStatus, connect, signOut } = publication
+  const publication = usePublication(Boolean(editor) || draftWorkflow || ['/connection', '/profile'].includes(path), published, [...drafts.map(d => d.id), ...(editor ? [editor.id] : [])], setPublished)
+  const { connected, verified, receipts, busy, pending, receiptError, checking, checkConnection, checkStatus, connect } = publication
 
   async function refresh() {
     try { setPublished(await fetchIndex()); setIndexError('') }
@@ -137,13 +136,8 @@ function Workspace({ path }: { path: string }) {
   return <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-8 sm:py-10">
     {storageError && <Notice danger>{storageError} <button className="underline" onClick={exportBackup}>Export current drafts</button></Notice>}
     {receiptError && <Notice danger>{receiptError}</Notice>}
-    {path === '/connection' && pending && <Card className="border border-line" padding="1rem">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap items-center gap-2"><Badge variant={pending.status === 'published' ? 'success' : pending.status === 'failed' ? 'danger' : 'warning'}>{statusLabel[pending.status]}</Badge><span className="font-semibold">{pending.draft.entry.simplified} · {pending.draft.cue || pending.draft.type}</span></div>
-      {pending.status !== 'published' && <Button secondary disabled={checking || busy} onClick={() => void checkStatus()}>{checking ? 'Checking…' : 'Check publication'}</Button>}</div>
-      <p className="mt-2 text-sm text-muted" role="status">{pending.detail}</p>{publication.statusError && <p role="status" className="mt-2 text-sm text-muted">{publication.statusError}</p>}<p className="mt-2 break-all text-xs text-muted">Device receipt · {new Date(pending.createdAt).toLocaleString()} · Request {pending.id}</p>
-    </Card>}
     {(connectionError || publication.error) && <Notice danger>{connectionError || publication.error}</Notice>}
-    {path === '/lookup' ? <Lookup onSelect={select} seed={published[0]} onEdit={copyCard} /> : path === '/' || path === '/associations' ? <Library drafts={drafts} published={published} onEdit={edit} onCopy={copyCard} onExport={exportBackup} onImport={importBackup} onRefresh={refresh} onScope={setDraftWorkflow} renderStatus={draftStatus} /> : path === '/connection' || path === '/about' ? <Connection connected={connected} verified={verified} receipts={receipts} busy={busy} onConnect={connect} onVerify={checkConnection} onDisconnect={signOut} /> : <><PageHeader title="Page not found" description="Choose a screen from Yi’s navigation to continue." /></>}
+    {path === '/lookup' ? <Lookup onSelect={select} seed={published[0]} onEdit={copyCard} /> : path === '/' || path === '/associations' ? <Library drafts={drafts} published={published} onEdit={edit} onCopy={copyCard} onExport={exportBackup} onImport={importBackup} onRefresh={refresh} onScope={setDraftWorkflow} renderStatus={draftStatus} /> : path === '/connection' || path === '/profile' ? <Profile app={fas} publication={publication} draftCount={drafts.length} onExport={exportBackup} onImport={importBackup} /> : path === '/about' ? <About /> : <><PageHeader title="Page not found" description="Choose a screen from Yi’s navigation to continue." /></>}
     {indexError && <Notice>{indexError} <button onClick={() => void refresh()} className="underline">Try again</button></Notice>}
     <Modal open={Boolean(editor)} onClose={() => setEditor(null)} title={editor ? `Your association · ${editor.entry.simplified}` : 'Your association'} maxWidth={680}>
       {editor && <div className="space-y-5">
@@ -162,9 +156,6 @@ function Workspace({ path }: { path: string }) {
   </div>
 }
 
-function Notice({ children, danger = false }: { children: ReactNode; danger?: boolean }) {
-  return <div role={danger ? 'alert' : undefined} className={`rounded-xl border p-4 text-sm leading-relaxed ${danger ? 'border-danger/30 bg-danger-soft text-ink' : 'border-line bg-paper-deep text-muted'}`}>{children}</div>
-}
 
 function Lookup({ onSelect, seed, onEdit }: { onSelect: (entry: Entry) => void; seed?: Published; onEdit: (draft: Draft) => void }) {
   const [query, setQuery] = useState('')
@@ -242,15 +233,5 @@ function Library({ drafts, published, onEdit, onCopy, onExport, onImport, onRefr
     </article>})}</div>
     {!cards.length && <EmptyState title="Room for a new memory" message="Look up a word to start an association, or try a different search." />}
     <p className="text-xs text-muted">Public cards come from the shared repository. Copies and edits stay in Local drafts on this device. Only the verified artist owner can publish images.</p>
-  </>
-}
-
-function Connection({ connected, verified, receipts, busy, onConnect, onVerify, onDisconnect }: { connected: boolean; verified: OwnerVerification | null; receipts: Receipt[]; busy: boolean; onConnect: () => void; onVerify: () => void; onDisconnect: () => void }) {
-  return <>
-    <PageHeader title="About & connection" description="Your imagination, with a little help from Yi." />
-    <div className="grid items-start gap-6 md:grid-cols-2"><Card padding="1.5rem" className="space-y-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold">Your image artist</h2><Badge variant={connected ? 'success' : 'default'}>{verified ? 'Artist verified' : connected ? busy ? 'Checking artist…' : 'Connected · ownership not confirmed' : 'Not connected'}</Badge></div><p className="text-sm leading-relaxed text-muted">Browsing and local drafts are free. Image publishing is for the owner of Yi’s private PAGS artist and uses their Codex subscription. FreeAppStore and PAGS sign-ins are independent.</p>{verified && <div className="rounded-xl border border-line bg-paper-deep p-4 text-sm" data-testid="owner-identity"><p className="font-semibold break-words">{verified.label}</p><p>Verified artist ownership</p>{verified.accountId && <p className="mt-1 break-all text-xs text-muted">Account: {verified.accountId}</p>}<p className="mt-2 text-xs text-muted">Verified {new Date(verified.checkedAt).toLocaleString()}. Checked again before every dispatch.</p></div>}<div className="flex flex-wrap gap-3">{connected ? <><Button disabled={busy} onClick={onVerify}>{busy ? 'Checking artist…' : verified ? 'Check artist connection' : 'Retry connection check'}</Button><Button secondary onClick={onDisconnect}>Disconnect</Button></> : <Button disabled={busy} onClick={onConnect}>{busy ? 'Opening sign-in…' : 'Connect PAGS'}</Button>}</div><p className="text-xs leading-relaxed text-muted">Yi requests read and runtime permissions only. Your sign-in stays in this tab, expires automatically, and is cleared when you disconnect. Reconnect after expiry.</p><a href="https://proagentstore.online" target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center text-sm font-semibold text-accent underline">Open PAGS for full activity ↗</a></Card>
-    <div className="space-y-5"><Card padding="1.5rem" className="space-y-3"><h2 className="text-xl font-bold">A memory, not a translation</h2><p className="text-sm leading-relaxed text-muted">Yi helps you attach a vivid image to a Chinese word’s sound, characters, or meaning. “Easy” is a personal cue for 椅子; the dictionary pronunciation is yǐzi. Always learn the real reading and tones alongside your association.</p></Card><Card padding="1.5rem" className="space-y-3"><h2 className="text-xl font-bold">Private drafts, public pictures</h2><p className="text-sm leading-relaxed text-muted">Lookups run locally after the dictionary downloads. Drafts stay in this browser’s localStorage. Clearing browser data removes them, and different hostnames have separate storage: export before moving between Yi’s addresses.</p><p className="text-sm leading-relaxed text-muted">For the verified owner, Publish image sends the brief to the private artist and commits the result to the public app repository. Anyone can view published images and descriptions. Avoid private or sensitive details. No recordings are uploaded; music cues are titles, artists, and external search links.</p></Card></div></div>
-    <Card padding="1.5rem" className="space-y-3"><h2 className="text-xl font-bold">Recent activity on this device</h2><p className="text-sm text-muted">Up to 50 generation/publication receipts from this browser and hostname, shared by accounts using this device. This is not account-wide history. Older requests may only have their latest receipt. No private terminal logs are shown. Open PAGS above and select your artist for its full activity.</p>{receipts.length ? <ol className="space-y-3">{receipts.map(r => <li key={r.id} className="rounded-xl border border-line p-3 text-sm"><div className="flex flex-wrap items-center gap-2"><span lang="zh">{r.word}</span><Badge>{statusLabel[r.status]}</Badge></div><p className="mt-2 text-xs text-muted">Requested <time dateTime={r.createdAt}>{new Date(r.createdAt).toLocaleString()}</time> · Updated <time dateTime={r.updatedAt}>{new Date(r.updatedAt).toLocaleString()}</time></p><p className="mt-1 break-all text-xs text-muted">{r.id}</p></li>)}</ol> : <p className="text-sm text-muted">No publication receipts on this device yet. Public browsing creates no generation requests.</p>}</Card>
-    <Card padding="1.5rem" className="space-y-3"><h2 className="text-xl font-bold">Sources & credits</h2><p className="text-sm leading-relaxed text-muted">Dictionary: <a href="https://www.mdbg.net/chinese/dictionary?page=cc-cedict" className="text-accent underline" target="_blank" rel="noreferrer">CC-CEDICT, published by MDBG</a>. Community-maintained, based on CEDICT by Paul Denisowski. Bundled snapshot: 2 November 2026, 125,356 entries. Data is unchanged and licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/" className="text-accent underline" target="_blank" rel="noreferrer">CC BY-SA 4.0</a>. Yi converts numbered pinyin to tone marks for display and normalizes text for search.</p><p className="text-sm text-muted">Seed illustration generated with native Codex image generation through ChatGPT subscription authentication. App source is MIT licensed. Built on <a href="https://freeappstore.online" className="text-accent underline">FreeAppStore</a>. <a href="https://github.com/freeappstore-online/hanzi-associations" className="text-accent underline" target="_blank" rel="noreferrer">View source ↗</a></p></Card>
   </>
 }

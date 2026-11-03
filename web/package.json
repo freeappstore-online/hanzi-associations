@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@freeappstore/sdk": "^0.16.4",
+    "@freeappstore/sdk": "0.16.6",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

@@ -74,7 +74,7 @@ an unresolved receipt to force a retry.
 
 ## Receipts and activity coverage
 
-About & connection shows the current receipt and up to 50 recent requests on this
+Profile shows the current receipt and up to 50 recent requests on this
 device/hostname, with status, request time and latest receipt update time. The
 history stores word, request ID, status and timestamps, not prompts, tokens or raw
 terminal logs. It is device-only and shared by accounts using that browser; it is
@@ -91,7 +91,7 @@ with the public index and raster SHA-256; expired/disconnected OAuth does not pr
 public reconciliation. Missing private status is reported as connection needed or
 status unavailable, without silently changing the last observed request state.
 
-Opening Local drafts, an editor or About & connection establishes ownership from a
+Opening Local drafts, an editor or Profile establishes ownership from a
 valid saved OAuth session automatically, including after reload. No trusted boolean
 is persisted. Anonymous public browsing, or saved OAuth without pending/owner work,
 makes zero PAGS calls. Explicit owner work or saved pending tracking may use private
@@ -174,3 +174,70 @@ from the index. A timed poll assertion was widened from 20 to 40 seconds after o
 loaded-machine timeout; the application interval remains 12 seconds and the slow
 synthetic read remains 1.6 seconds. Final affected lifecycle runs passed on both
 viewports without manual status clicks. No generation request reached production.
+
+## Issues #3 and #4: Profile and result recovery
+
+Profile (`/profile`) is reachable through SDK Shell navigation and its signed-in
+avatar using released SDK 0.16.6. The SDK ProfilePage keeps existing appearance,
+text size, friends, API keys, sign-out and account-deletion controls. PAGS controls
+and device receipts remain outside its signed-in gate. FreeAppStore and PAGS
+identity/session lifetimes remain separate. `/connection` renders the same page
+and is still the registered OAuth redirect URI; `/about` holds story and credits.
+No credentials, account merge, permission changes or expanded token persistence
+are involved. PAGS settings at `/console/preferences` provides platform GitHub
+Reconnect; it cannot repair the artist machine's separate GitHub CLI login. The
+Profile page makes no claim about live GitHub connectivity.
+
+Observed evidence for #3 is the owner-supplied sanitized coding_timeline event
+63728: a terminal feed tail ending with `[08:51:50] YI_FAILED` for the failed 黄
+request. The old bare-marker regex could not match it. The earlier mobile receipt
+was not inspected; advancing beyond that event is a recovery scenario, not a
+claim about the phone's exact stored state. Tests replay cursor 63729 with the
+failure at 63728 while unrelated session work is busy.
+
+The timeline does not supply a structured per-request outcome. Parsing therefore
+uses a deliberately narrow rendered-output convention: a complete single-line
+assistant/chat_assistant marker, or the final top-level timestamped marker in a
+terminal feed tail of at most 400 characters. Only HH:MM:SS timestamps, literal
+matching request UUIDs and exact commit hashes qualify. Commands, instructions,
+user messages, unknown types, indented tool echoes, visible prompt/code blocks and
+toolCalls never supply outcomes. Full pane snapshots/seq expansions are excluded;
+the feed's intentional terminal tail is different from the full 8,079-character
+prompt/tool-containing snapshot. This convention is not cryptographic assistant
+provenance: ambiguous or unsupported output remains unconfirmed. No private
+failure text is displayed, and a commit report is never proof of deployment.
+
+New receipts keep an immutable dispatchSeq separate from the advancing sinceSeq.
+Forward reads use since_seq/nextSeq exclusively (oldest to newest). Legacy
+unresolved receipts without a dispatch boundary read the newest page and move
+backwards using before/oldestSeq exclusively, to recover an already-skipped
+outcome or the original request turn. Both scans are bounded to five pages.
+Narrative event.chars greater than content.length identifies unread outcome text; the
+page-level truncated counts are checked too. Intentional terminal-tail cuts are
+allowed. Command/instruction bodies are never outcome sources, so a complete
+first-line request marker suffices for attribution even in a 1,200-character
+head of a longer command. Later cut commands still establish supersession and
+do not block historical recovery. Incomplete/looping/over-budget reads retain the prior cursor and show
+status unavailable rather than skipping unseen text. Public SHA proof remains
+first, even without auth.
+
+Generating requires a matching latest command/instruction/user turn and a working
+matching session; a later unrelated turn supersedes it. A busy session alone no
+longer proves that an old request is generating. If request-specific progress
+cannot be established, Yi reports unconfirmed/stopped-or-other-work status and
+never resends. Legacy recovery has finite history coverage; very old, ambiguous
+or heavily truncated activity may still require manual review in PAGS.
+
+Local validation for #3/#4: 57 unit tests, 48 distinct browser scenarios (24
+per viewport across full and targeted runs), two styling checks and production
+build passed. The six published cards/images validate and remain byte-identical
+to b66041c5d5e51a901f6216c996ab66b282ca0463. Desktop/mobile signed-in and
+signed-out Profile screenshots were inspected. Tests use synthetic FAS/OAuth/MCP
+responses and deployment bytes; no real generation or resend was dispatched.
+The first broad browser run was interrupted during review; one mobile workflow
+exceeded its overall timeout under six workers. Targeted runs used two workers
+and retained the application polling interval. The quota-warning test now scopes
+to the editor alert, and lazy-image checks wait for the index-derived card count
+before scrolling each image into view.
+FAS compliance passed all hard checks with the same two existing warnings:
+dictionary/NOTICE offline precaching and the CLAUDE.md SKILLS pointer.

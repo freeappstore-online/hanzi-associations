@@ -18,8 +18,8 @@ importers:
   web:
     dependencies:
       '@freeappstore/sdk':
-        specifier: ^0.16.4
-        version: 0.16.5(react@19.2.7)
+        specifier: 0.16.6
+        version: 0.16.6(react@19.2.7)
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.2
         version: 1.32.2(zod@4.6.7)
@@ -732,8 +732,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@freeappstore/sdk@0.16.5':
-    resolution: {integrity: sha512-Iou8xbEXHcUkEcm0dBQEif1XOXgohPo3V59aHoT/tI3qwrB6vsmI8nQmyEK6sfPd6QcWuuRqQngtl3l/e4r/4Q==}
+  '@freeappstore/sdk@0.16.6':
+    resolution: {integrity: sha512-cL00/GmBHxDUBrOeuvNlIdD21jfF8hAPyCS7yeaX8S4AiAw2Ejxg7aTfacRCFeUtc23fjA03nixrB+jmiIMoMQ==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
     peerDependenciesMeta:
@@ -3275,7 +3275,7 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@freeappstore/sdk@0.16.5(react@19.2.7)':
+  '@freeappstore/sdk@0.16.6(react@19.2.7)':
     optionalDependencies:
       react: 19.2.7
 

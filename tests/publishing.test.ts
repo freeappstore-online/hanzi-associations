@@ -6,6 +6,7 @@ import { createRequest, loadPending, loadReceipts, PENDING_KEY, HISTORY_KEY, sav
 import { AUTH_KEY, disconnect } from '../web/src/oauth.ts'
 import type { Store } from '../web/src/model.ts'
 import { tools, response } from './pags-fixture.ts'
+import { failedSnapshot } from './timeline-fixture.ts'
 const draft = JSON.parse(readFileSync('web/public/associations/index.json', 'utf8')).associations[0]
 function store(): Store {
   const values = new Map<string, string>()
@@ -17,7 +18,7 @@ function auth(storage: Store, token = 'synthetic-owner', expiresAt = Date.now() 
 function fixture() {
   const storage = store(), session = store(), calls: string[] = []
   auth(session)
-  let handle: (name: string) => unknown | Promise<unknown> = response
+  let handle: (name: string, args: Record<string, unknown>) => unknown | Promise<unknown> = response
   let available = tools
   let connect: () => Promise<void> = async () => {}
   let revoked = 0
@@ -25,13 +26,103 @@ function fixture() {
     connect: () => connect(), close: async () => {}, listTools: async () => ({ tools: available }),
     callTool: async ({ name, arguments: args }: { name: string; arguments: Record<string, unknown> }) => {
       calls.push(name); assert.ok(!('token' in args))
-      return { content: [{ type: 'text', text: JSON.stringify(await handle(name)) }] }
+      return { content: [{ type: 'text', text: JSON.stringify(await handle(name, args)) }] }
     },
   } as unknown as PagsClient
   const client = new Pags(() => { revoked++ }, adapter)
   return { client, session, storage, calls, setHandle: (fn: typeof handle) => { handle = fn }, setTools: (next: typeof tools) => { available = next }, setConnect: (fn: typeof connect) => { connect = fn }, get revoked() { return revoked } }
 }
 function deferred() { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r }); return { promise, resolve } }
+
+test('legacy cursor beyond timestamped failure recovers without resend and survives reload', async () => {
+  const f = fixture(); await f.client.connect(f.session)
+  const request = { ...createRequest(draft, null), id: '0ad2eed4-36ed-4a9c-a11c-bfbbc3a39539', sessionId: 'csess-test', sinceSeq: 63729 }
+  f.setHandle((name, args) => {
+    if (name !== 'coding_timeline') return response(name)
+    assert.ok(!('since_seq' in args))
+    return { ...response(name) as object, nextSeq: 63729, hasMore: true, oldestSeq: 63719, events: [failedSnapshot] }
+  })
+  const result = await f.client.reconcile(request, [])
+  assert.equal(result.status, 'failed'); assert.equal(result.sinceSeq, 63729)
+  assert.ok(!result.detail.includes('push=false'))
+  savePending(f.storage, result)
+  assert.equal(loadPending(f.storage)?.status, 'failed')
+  assert.equal(loadReceipts(f.storage)[0].status, 'failed')
+  await assert.rejects(() => f.client.publish(loadPending(f.storage)!, f.storage, () => {}), /receipt/)
+  assert.ok(!f.calls.includes('coding_session_message'))
+})
+test('forward and historical pagination use mutually exclusive modes without cursor skips', async () => {
+  for (const legacy of [false, true]) {
+    const f = fixture(); await f.client.connect(f.session)
+    const request = { ...createRequest(draft, null), sessionId: 'csess-test', sinceSeq: 10, ...(legacy ? {} : { dispatchSeq: 10 }) }
+    const argsSeen: Record<string, unknown>[] = []
+    f.setHandle((name, args) => {
+      if (name !== 'coding_timeline') return response(name)
+      assert.ok(!('since_seq' in args && 'before' in args))
+      argsSeen.push(args)
+      const second = argsSeen.length === 2
+      return { ...response(name) as object, nextSeq: legacy ? second ? 15 : 20 : second ? 20 : 15, oldestSeq: second ? 11 : 16, hasMore: !second, events: second ? [{ seq: legacy ? 12 : 18, type: 'chat_assistant', content: `YI_FAILED ${request.id} blocked` }] : [] }
+    })
+    const result = await f.client.reconcile(request, [])
+    assert.equal(result.status, 'failed'); assert.equal(result.sinceSeq, 20)
+    assert.equal(legacy ? argsSeen[1].before : argsSeen[1].since_seq, legacy ? 16 : 15)
+    assert.equal(result.dispatchSeq, request.dispatchSeq)
+  }
+})
+test('incomplete, looping or excessive pages leave the saved cursor unchanged and no resend', async () => {
+  for (const mode of ['truncated', 'loop', 'bounded']) {
+    const f = fixture(); await f.client.connect(f.session)
+    const request = { ...createRequest(draft, null), sessionId: 'csess-test', sinceSeq: 10, dispatchSeq: 2 }
+    savePending(f.storage, request)
+    f.setHandle((name, args) => name !== 'coding_timeline' ? response(name) : { ...response(name) as object, nextSeq: mode === 'loop' ? 10 : Number(args.since_seq) + 10, hasMore: true, events: mode === 'truncated' ? [{ seq: 20, type: 'chat_assistant', content: 'partial', chars: 500 }] : [] })
+    const result = await f.client.reconcile(request, [])
+    assert.equal(result.sinceSeq, 10); assert.equal(result.dispatchSeq, 2)
+    assert.equal(result.status, 'uncertain'); assert.match(result.detail, /Status unavailable/)
+    assert.ok(f.calls.filter(n => n === 'coding_timeline').length <= 5)
+    assert.equal(loadPending(f.storage)?.sinceSeq, 10)
+    assert.ok(!f.calls.includes('coding_session_message'))
+  }
+})
+test('busy unrelated work is never evidence that a legacy request is generating', async () => {
+  const f = fixture(); await f.client.connect(f.session)
+  const request = { ...createRequest(draft, null), sessionId: 'csess-test', sinceSeq: 63729 }
+  f.setHandle(name => name === 'coding_session_capture' ? { ...response(name) as object, runState: 'thinking' } : name === 'coding_timeline' ? { ...response(name) as object, nextSeq: 64000, events: [{ seq: 63999, type: 'command', content: 'Implement unrelated code changes' }] } : response(name))
+  const result = await f.client.reconcile(request, [])
+  assert.equal(result.status, 'uncertain'); assert.equal(result.sinceSeq, 63729)
+  assert.match(result.detail, /No request-specific progress/)
+})
+test('request-specific latest user turn permits generating, later work supersedes it across polls', async () => {
+  const f = fixture(); await f.client.connect(f.session)
+  const request = { ...createRequest(draft, null), sessionId: 'csess-test', sinceSeq: 10, dispatchSeq: 10 }
+  let later = false
+  f.setHandle(name => name === 'coding_session_capture' ? { ...response(name) as object, runState: 'thinking' } : name === 'coding_timeline' ? { ...response(name) as object, nextSeq: later ? 13 : 11, events: [{ seq: later ? 13 : 11, type: 'command', content: later ? 'Other work' : `YI_ASSOCIATION_REQUEST ${request.id}` }] } : response(name))
+  const generating = await f.client.reconcile(request, [])
+  assert.equal(generating.status, 'generating'); assert.equal(generating.dispatchSeq, 10)
+  later = true
+  const stopped = await f.client.reconcile(generating, [])
+  assert.equal(stopped.status, 'uncertain'); assert.equal(stopped.superseded, true)
+  assert.equal((await f.client.reconcile(stopped, [])).status, 'uncertain')
+})
+test('real 3250-char dispatch head attributes generation; cut later commands do not hide legacy failure', async () => {
+  const f = fixture(); await f.client.connect(f.session)
+  const request = { ...createRequest(draft, null), id: '0ad2eed4-36ed-4a9c-a11c-bfbbc3a39539', sessionId: 'csess-test', sinceSeq: 63725, dispatchSeq: 63725 }
+  const command = { seq: 63726, type: 'command', chars: 3250, content: (`YI_ASSOCIATION_REQUEST ${request.id}\n` + 'creative brief '.repeat(300)).slice(0, 1200) }
+  f.setHandle(name => name === 'coding_session_capture' ? { ...response(name) as object, runState: 'thinking' } : name === 'coding_timeline' ? { ...response(name) as object, nextSeq: 63726, truncated: { events: 1, chars: 2050 }, events: [command] } : response(name))
+  const generating = await f.client.reconcile(request, [])
+  assert.equal(generating.status, 'generating'); assert.equal(generating.requestTurnSeq, 63726)
+  const unrelated = { seq: 64000, type: 'command', chars: 5000, content: 'Implement unrelated code\n' + 'x'.repeat(1175) }
+  f.setHandle((name, args) => {
+    if (name === 'coding_session_capture') return { ...response(name) as object, runState: 'thinking' }
+    if (name !== 'coding_timeline') return response(name)
+    if (args.before) return { ...response(name) as object, nextSeq: 63729, oldestSeq: 63726, hasMore: false, events: [command, failedSnapshot], truncated: { events: 2, chars: 9729 } }
+    return { ...response(name) as object, nextSeq: 64000, oldestSeq: 63990, hasMore: !args.since_seq, events: [unrelated], truncated: { events: 1, chars: 3800 } }
+  })
+  const stopped = await f.client.reconcile(generating, [])
+  assert.equal(stopped.status, 'uncertain'); assert.equal(stopped.superseded, true)
+  const recovered = await f.client.reconcile({ ...request, dispatchSeq: undefined, sinceSeq: 63729 }, [])
+  assert.equal(recovered.status, 'failed'); assert.equal(recovered.sinceSeq, 64000)
+  assert.ok(!f.calls.includes('coding_session_message'))
+})
 
 test('anonymous direct publish and raw method bypass cannot reach transport', async () => {
   const f = fixture()
@@ -69,7 +160,7 @@ test('successful owner dispatch rechecks all guards and records one queued recei
   const request = createRequest(draft, null)
   await f.client.publish(request, f.storage, () => {})
   assert.deepEqual(f.calls, ['my_instances', 'coding_repos_list', 'whoami', 'coding_engine_get', 'coding_sessions_list', 'coding_timeline', 'coding_session_capture', 'coding_session_message'])
-  assert.equal(loadPending(f.storage)?.status, 'queued'); assert.equal(loadPending(f.storage)?.sessionId, 'csess-test')
+  assert.equal(loadPending(f.storage)?.status, 'queued'); assert.equal(loadPending(f.storage)?.sessionId, 'csess-test'); assert.equal(loadPending(f.storage)?.dispatchSeq, 1)
   assert.equal(loadReceipts(f.storage)[0].status, 'queued')
   await assert.rejects(() => f.client.publish(request, f.storage, () => {}), /receipt/)
   assert.equal(f.calls.filter(n => n === 'coding_session_message').length, 1)
@@ -239,13 +330,13 @@ test('verification started during engine reads invalidates the prepared dispatch
 
 test('reported commit remains publishing after its cursor advances, but permits explicit failure', async () => {
   const f = fixture(); await f.client.connect(f.session)
-  const request = { ...createRequest(draft, null), sessionId: 'csess-test' }
+  const request = { ...createRequest(draft, null), sessionId: 'csess-test', dispatchSeq: 0 }
   let phase: 'committed' | 'thinking' | 'failed' = 'committed'
   f.setHandle(name => {
     if (name === 'coding_timeline') return {
       ...response(name) as object,
       nextSeq: phase === 'committed' ? 11 : phase === 'thinking' ? 12 : 13,
-      events: phase === 'thinking' ? [] : [{ seq: phase === 'committed' ? 10 : 12, type: 'assistant', content: phase === 'committed' ? `YI_COMMITTED ${request.id} ${'a'.repeat(40)}` : `YI_FAILED ${request.id} deployment blocked` }],
+      events: phase === 'thinking' ? [] : [{ seq: phase === 'committed' ? 10 : 13, type: 'assistant', content: phase === 'committed' ? `YI_COMMITTED ${request.id} ${'a'.repeat(40)}` : `YI_FAILED ${request.id} deployment blocked` }],
     }
     if (name === 'coding_session_capture') return { ...response(name) as object, runState: 'thinking', ready: false }
     return response(name)
