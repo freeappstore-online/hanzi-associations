@@ -208,7 +208,7 @@ export class Pags {
         if (timeline.events.some(e => e.content?.includes(`YI_ASSOCIATION_REQUEST ${request.id}`))) { sid = candidate.id; break }
       }
     }
-    if (!sid) return { ...request, status: 'uncertain', detail: 'Delivery is still unconfirmed. The request will not be resent. Check the artist’s timeline in PAGS.' }
+    if (!sid) return request.status === 'deploying' ? request : { ...request, status: 'uncertain', detail: 'Delivery is still unconfirmed. The request will not be resent. Check the artist’s timeline in PAGS.' }
     const timeline = timelineSchema.parse(await this.#call('coding_timeline', { instance_id: INSTANCE_ID, session_id: sid, limit: 40, ...(request.sinceSeq !== undefined ? { since_seq: request.sinceSeq } : {}) }))
     if (timeline.repoId && timeline.repoId !== REPO_ID || timeline.sessionId && timeline.sessionId !== sid) throw new Error('The request session no longer matches Yi.')
     // Only exact standalone marker lines qualify; the original prompt contains inline examples.
@@ -216,12 +216,16 @@ export class Pags {
     const next = { ...request, sessionId: sid, sinceSeq: timeline.nextSeq ?? request.sinceSeq }
     if (new RegExp(`^YI_FAILED ${request.id} [^\n]+$`, 'm').test(report)) return { ...next, status: 'failed', detail: 'The artist reported a failure. Review its PAGS timeline for the exact blocker, revise if needed, and publish again.' }
     if (new RegExp(`^YI_COMMITTED ${request.id} [a-f0-9]{40}$`, 'm').test(report)) return { ...next, status: 'deploying', detail: 'The artist reports a pushed commit. Waiting for the deployed index and verified image.' }
+    // The cursor may have moved past YI_COMMITTED. A busy session is weaker
+    // evidence than that durable receipt; only explicit failure or live proof
+    // may replace the publishing state.
+    if (request.status === 'deploying') return next
     if (session?.id === sid) {
       const capture = captureSchema.parse(await this.#call('coding_session_capture', { instance_id: INSTANCE_ID, session_id: sid }))
       if (capture.sessionId && capture.sessionId !== sid) throw new Error('The request session no longer matches Yi.')
       if (!capture.runnerConnected || capture.authPrompt) return { ...next, detail: 'The artist is offline or needs sign-in. This request remains pending; it will not be resent.' }
       if (capture.runState === 'thinking' || capture.runState === 'responding') return { ...next, status: 'generating', detail: 'The request’s Codex session is working. Publication is not yet verified.' }
     }
-    return { ...next, detail: request.status === 'deploying' ? request.detail : 'No deployed result yet. Check the artist in PAGS if it needs attention. Yi will not resend this request.' }
+    return { ...next, detail: 'No deployed result yet. Check the artist in PAGS if it needs attention. Yi will not resend this request.' }
   }
 }

@@ -236,3 +236,27 @@ test('verification started during engine reads invalidates the prepared dispatch
   await assert.rejects(() => publishing, /Verification changed/)
   assert.ok(!f.calls.includes('coding_session_message'))
 })
+
+test('reported commit remains publishing after its cursor advances, but permits explicit failure', async () => {
+  const f = fixture(); await f.client.connect(f.session)
+  const request = { ...createRequest(draft, null), sessionId: 'csess-test' }
+  let phase: 'committed' | 'thinking' | 'failed' = 'committed'
+  f.setHandle(name => {
+    if (name === 'coding_timeline') return {
+      ...response(name) as object,
+      nextSeq: phase === 'committed' ? 11 : phase === 'thinking' ? 12 : 13,
+      events: phase === 'thinking' ? [] : [{ seq: phase === 'committed' ? 10 : 12, type: 'assistant', content: phase === 'committed' ? `YI_COMMITTED ${request.id} ${'a'.repeat(40)}` : `YI_FAILED ${request.id} deployment blocked` }],
+    }
+    if (name === 'coding_session_capture') return { ...response(name) as object, runState: 'thinking', ready: false }
+    return response(name)
+  })
+  const committed = await f.client.reconcile(request, [])
+  assert.equal(committed.status, 'deploying'); assert.equal(committed.sinceSeq, 11)
+  phase = 'thinking'
+  const waiting = await f.client.reconcile(committed, [])
+  assert.equal(waiting.status, 'deploying'); assert.equal(waiting.sinceSeq, 12)
+  assert.equal(waiting.detail, committed.detail)
+  phase = 'failed'
+  assert.equal((await f.client.reconcile(waiting, [])).status, 'failed')
+  assert.ok(!f.calls.includes('coding_session_message'))
+})
