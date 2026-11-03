@@ -129,6 +129,28 @@
       "alt": "A smiling adult draws a heart directly on a wooden table with a purple crayon, surrounded by scattered crayons and colorful drawings of flowers, a rainbow, a sun, and a cat.",
       "generatedWith": "codex-native-image-generation",
       "updatedAt": "2026-11-03T10:16:23.194Z"
+    },
+    {
+      "id": "6e36249e-8ae5-49fb-ad09-4e81b316f0de",
+      "entry": {
+        "traditional": "大提琴",
+        "simplified": "大提琴",
+        "pinyin": "da4 ti2 qin2",
+        "definitions": [
+          "cello (CL:把[ba3])"
+        ]
+      },
+      "type": "sound",
+      "cue": "Titi",
+      "description": "A cello in a bra hiding big tities",
+      "songArtist": "",
+      "songTitle": "",
+      "updatedAt": "2026-11-03T21:02:12.630Z",
+      "requestId": "32e8756f-211d-4449-9140-fbcc50a922ad",
+      "image": "/associations/32e8756f-211d-4449-9140-fbcc50a922ad.png",
+      "imageSha256": "894f1d5ec85127c158714a9587a1d5d45d1c228413f98a66f1e0cc2e9e10cca2",
+      "alt": "An upright wooden cello wears an oversized pink bra with large rounded opaque cups, while its scroll, strings, bridge, f-holes, and endpin remain visible.",
+      "generatedWith": "codex-native-image-generation"
     }
   ]
 }
