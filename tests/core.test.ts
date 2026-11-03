@@ -5,7 +5,7 @@ import { gunzipSync } from 'node:zlib'
 import { decodeDictionary, entryKey, makeSearchIndex, normalizePinyin, parseCedict, searchDictionary, toneMarks } from '../web/src/dictionary.ts'
 import { backupSchema, DRAFT_KEY, importDrafts, indexSchema, loadDrafts, mergeCards, saveDrafts, type Store } from '../web/src/model.ts'
 import { assertTarget, createRequest, generationInstruction, INSTANCE_ID, loadPending, PENDING_KEY, REPO, REPO_ID, savePending } from '../web/src/generation.ts'
-import { AUTH_KEY, beginOAuth, challenge, consumeState, finishOAuth, FLOW_KEY, getSession, ISSUER } from '../web/src/oauth.ts'
+import { AUTH_KEY, beginOAuth, challenge, disconnect, consumeState, finishOAuth, FLOW_KEY, getSession, ISSUER } from '../web/src/oauth.ts'
 
 class MemoryStore implements Store {
   data = new Map<string, string>()
@@ -126,4 +126,25 @@ test('dictionary transport accepts gzip magic and already-decoded text', async (
   const compressed = Uint8Array.from(readFileSync('web/public/dictionary/cedict.bin')).buffer
   assert.equal(await decodeDictionary(compressed), source)
   assert.equal(await decodeDictionary(new TextEncoder().encode(source).buffer), source)
+})
+
+for (const mode of ['disconnect', 'switch']) test(`late OAuth completion cannot undo ${mode}`, async () => {
+  const store = new MemoryStore(), original = globalThis.fetch
+  store.setItem(FLOW_KEY, JSON.stringify({ ...flow, createdAt: Date.now() }))
+  let release!: () => void, entered!: () => void
+  const gate = new Promise<void>(r => { release = r }), arrived = new Promise<void>(r => { entered = r })
+  globalThis.fetch = async url => {
+    if (String(url).endsWith('/token')) { entered(); await gate; return Response.json({ access_token: 'stale-synthetic', token_type: 'Bearer', expires_in: 3600, scope: 'read runtime' }) }
+    return Response.json({ issuer: ISSUER, authorization_endpoint: `${ISSUER}/authorize`, token_endpoint: `${ISSUER}/token`, registration_endpoint: `${ISSUER}/register`, code_challenge_methods_supported: ['S256'], token_endpoint_auth_methods_supported: ['none'] })
+  }
+  try {
+    const callback = new URL(flow.redirectUri); callback.search = new URLSearchParams({ state: flow.state, code: 'synthetic-code' }).toString()
+    const finishing = finishOAuth(store, callback)
+    await arrived
+    if (mode === 'disconnect') disconnect(store)
+    else store.setItem(AUTH_KEY, JSON.stringify({ accessToken: 'new-synthetic', clientId: 'new-client', expiresAt: Date.now() + 3600000 }))
+    release()
+    await assert.rejects(() => finishing, /cancelled|changed/)
+    assert.equal(getSession(store)?.accessToken, mode === 'switch' ? 'new-synthetic' : undefined)
+  } finally { globalThis.fetch = original }
 })

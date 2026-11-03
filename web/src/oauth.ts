@@ -6,6 +6,8 @@ export const SCOPES = 'read runtime'
 export const AUTH_KEY = 'yi.oauth.session.v1'
 export const FLOW_KEY = 'yi.oauth.flow.v1'
 const CLIENT_KEY = 'yi.oauth.client.v1'
+const authGenerations = new WeakMap<Store, number>()
+function nextAuthGeneration(store: Store) { const next = (authGenerations.get(store) || 0) + 1; authGenerations.set(store, next); return next }
 const sessionSchema = z.object({ accessToken: z.string().min(1), expiresAt: z.number().finite(), clientId: z.string().min(1) })
 const flowSchema = z.object({ state: z.string().min(32), verifier: z.string().min(43).max(128), createdAt: z.number(), redirectUri: z.string().url(), clientId: z.string().min(1) })
 export type OAuthSession = z.infer<typeof sessionSchema>
@@ -41,9 +43,11 @@ export function getSession(store: Store, now = Date.now()): OAuthSession | null 
   } catch { return null }
 }
 export function disconnect(store: Store) {
+  nextAuthGeneration(store)
   for (const key of [AUTH_KEY, FLOW_KEY, CLIENT_KEY]) store.removeItem(key)
 }
 export async function beginOAuth(store: Store, origin: string) {
+  const generation = nextAuthGeneration(store)
   const metadata = metadataSchema.parse(await jsonFetch(`${ISSUER}/.well-known/oauth-authorization-server`))
   const redirectUri = `${origin}/connection`
   let clientId: string | undefined
@@ -60,6 +64,7 @@ export async function beginOAuth(store: Store, origin: string) {
     clientId = registration.client_id
     put(store, CLIENT_KEY, { clientId, redirectUri })
   }
+  if (authGenerations.get(store) !== generation) throw new Error('Sign-in was cancelled or superseded.')
   const state = random(), verifier = random()
   put(store, FLOW_KEY, { state, verifier, createdAt: Date.now(), redirectUri, clientId })
   const url = new URL(metadata.authorization_endpoint)
@@ -78,6 +83,8 @@ export function consumeState(store: Store, state: string | null, redirectUri: st
 }
 
 export async function finishOAuth(store: Store, callback: URL) {
+  const generation = nextAuthGeneration(store)
+  const previousSession = store.getItem(AUTH_KEY)
   const flow = consumeState(store, callback.searchParams.get('state'), callback.origin + callback.pathname)
   if (callback.searchParams.has('error')) throw new Error('PAGS sign-in was cancelled or declined.')
   const code = callback.searchParams.get('code')
@@ -91,6 +98,7 @@ export async function finishOAuth(store: Store, callback: URL) {
   if (tokens.scope && (!SCOPES.split(' ').every(s => tokens.scope.split(' ').includes(s)) || tokens.scope.split(' ').some((s: string) => !SCOPES.split(' ').includes(s)))) throw new Error('PAGS granted unexpected permissions. Reconnect with read and runtime only.')
   // Deliberately do not retain refresh tokens; reconnect after the short session expires.
   const session = { accessToken: tokens.access_token, expiresAt: Date.now() + tokens.expires_in * 1000, clientId: flow.clientId }
+  if (authGenerations.get(store) !== generation || store.getItem(AUTH_KEY) !== previousSession) throw new Error('Sign-in was cancelled or the account changed. Connect again.')
   put(store, AUTH_KEY, session)
   return session
 }

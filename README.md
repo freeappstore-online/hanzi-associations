@@ -1,11 +1,13 @@
 # Yi
 
 Chinese words, vivid memories. A mobile-first dictionary and mnemonic image
-notebook at https://yi.freeappstore.online. The original
+library at https://yi.freeappstore.online. The original
 https://hanzi-associations.freeappstore.online remains supported.
 
 - Search 125,356 CC-CEDICT entries by simplified/traditional hanzi, pinyin, or
   English. Filter words or single characters and choose alternate readings.
+- Browse the shared public library without login or any PAGS calls. Copy public
+  cards into separate device-only drafts.
 - Save sound, character, or meaning associations locally; revise descriptions
   and optional music cues; import/export JSON backups.
 - Publish images through the owner's private PAGS artist using direct Codex
@@ -35,8 +37,8 @@ or exported, and expire according to the server; reconnect rather than retain
 refresh tokens. The callback query is removed immediately.
 
 The official `@modelcontextprotocol/sdk` uses `/mcp`, discovers tool schemas,
-and validates input before each call. Only the seven required read/message
-tools are allowed. Ownership is checked before instance reads. The artist
+and validates input before each call. Only the required read/message tools and optional authenticated `whoami` identity
+tool are allowed. Candidate/recruiting profiles are never read. Ownership is checked before instance reads. The artist
 must be the account's active `abfc80a9-a7c3-4951-b7b3-85f826e4fdfa`, bound only
 to `repo_5d14d39b-dfdb-4a4e-a94b-a71c7a11b6d6` / this repository, with default
 Codex subscription billing. An active session must be on that repo and Codex,
@@ -46,7 +48,8 @@ configuration is changed by Yi.
 `coding_session_message` has no server-side idempotency parameter. Yi uses Web
 Locks across tabs, writes a local durable request receipt before sending, and
 never automatically resends an uncertain request. It reconciles sessions and
-polls timeline/capture every 12 seconds while visible. A lost acknowledgement
+polls timeline/capture every 12 seconds only on the visible connection page with
+verified ownership; public browsing never invokes PAGS. A lost acknowledgement
 can remain uncertain and require owner investigation in PAGS. This prevents
 blind retries; it cannot enforce a cross-device server lock. Do not clear a
 pending receipt to bypass it. Queued means acknowledged, generating means the
@@ -54,10 +57,36 @@ associated session is working, deploying means a commit is reported or only
 part of the asset deployment is live. Published requires a matching deployed
 index record and raster SHA-256. See ASSOCIATIONS.md for the agent contract.
 
-Dictionary and local drafts require no account. Other PAGS users cannot target
-this owner's private artist. The live OAuth approval and browser-to-CLI publish
+The public library, dictionary and local drafts require no account. Publishing
+controls appear only for the verified owner of the configured private artist.
+The client rechecks ownership before dispatch, including direct method calls.
+PAGS server authorization is the final boundary; mocked app tests do not prove
+production cross-account protection. The live OAuth approval and browser-to-CLI publish
 flow require that owner's account and an idle runner. Automated tests use
 synthetic OAuth/MCP responses; they never dispatch a real coding turn.
+
+## Public library and owner connection
+
+The landing page is Association library; `/lookup` is dictionary search. Public
+cards and local drafts are separate views. A copied public card gets its own local
+ID, and a local revision never changes the visible public library.
+
+FreeAppStore and PAGS sign-ins are independent. Only authenticated PAGS `whoami`
+identity (login/provider) is displayed, with an honest owner-verification fallback
+if identity metadata is unavailable. No name is hardcoded. Verification lasts for
+the current valid OAuth session, is revoked on expiry/disconnect/session changes
+or failures, and all guards run again before dispatch. Generation consumes the
+connected owner's Codex subscription; public browsing does not.
+
+Recent activity is up to 50 device-only publication receipts, with timestamps and
+status, shared by accounts using this browser/hostname. It is not account-wide
+history. The PAGS homepage link leads to the service where the owner can select
+the artist for full activity. Yi displays no raw private terminal logs.
+
+See [the access model](docs/access-model.md) for lifecycle checks, receipt coverage,
+server-authorization evidence and test limitations. A reusable public template,
+own-instance selection and community contributions are future work, not shipped
+features. The owner's private artist template remains private.
 
 ## Privacy, data and offline behaviour
 

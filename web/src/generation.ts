@@ -17,9 +17,27 @@ export function loadPending(store: Store): Pending | null {
   try { return pendingSchema.parse(JSON.parse(raw)) }
   catch { throw new Error('The saved publication receipt could not be read. Publishing is blocked to avoid a duplicate. Recover this device’s storage before trying again.') }
 }
+export const HISTORY_KEY = 'yi.publish.history.v1'
+const receiptSchema = z.object({ id: z.string().uuid(), word: z.string().max(80), status: pendingSchema.shape.status, createdAt: z.string().datetime(), updatedAt: z.string().datetime() })
+export type Receipt = z.infer<typeof receiptSchema>
+export function loadReceipts(store: Store): Receipt[] {
+  try {
+    const raw = store.getItem(HISTORY_KEY)
+    const history = raw ? z.array(receiptSchema).max(50).parse(JSON.parse(raw)) : []
+    const pending = loadPending(store)
+    if (pending && !history.some(r => r.id === pending.id)) history.unshift({ id: pending.id, word: pending.draft.entry.simplified, status: pending.status, createdAt: pending.createdAt, updatedAt: pending.createdAt })
+    return history.slice(0, 50)
+  } catch { throw new Error('Device publication history could not be read. Recover browser storage before publishing.') }
+}
 export function savePending(store: Store, pending: Pending) {
-  try { store.setItem(PENDING_KEY, JSON.stringify(pendingSchema.parse(pending))) }
-  catch { throw new Error('Cannot save the publication receipt. No new request should be sent until browser storage is available.') }
+  try {
+    const valid = pendingSchema.parse(pending)
+    const history = loadReceipts(store).filter(r => r.id !== valid.id)
+    const receipt: Receipt = { id: valid.id, word: valid.draft.entry.simplified, status: valid.status, createdAt: valid.createdAt, updatedAt: new Date().toISOString() }
+    // A durable pending receipt precedes dispatch even if history storage then fails.
+    store.setItem(PENDING_KEY, JSON.stringify(valid))
+    store.setItem(HISTORY_KEY, JSON.stringify([receipt, ...history].slice(0, 50)))
+  } catch { throw new Error('Cannot save the publication receipt. No new request should be sent until browser storage is available.') }
 }
 export function createRequest(draft: Draft, existing: Pending | null): Pending {
   if (existing && existing.status !== 'published' && existing.status !== 'failed') throw new Error('A publication is already pending. Check its status before starting another.')

@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test'
 test('real dictionary, image, persisted draft, backup and layout', async ({ page }, info) => {
   const errors: string[] = []
   page.on('pageerror', e => errors.push(e.message))
-  await page.goto('/')
+  await page.goto('/lookup')
   await expect(page.getByRole('heading', { name: 'Look up', exact: true })).toBeVisible()
   const image = page.getByRole('img', { name: /adult relaxes/i })
   await expect(image).toBeVisible()
@@ -20,8 +20,10 @@ test('real dictionary, image, persisted draft, backup and layout', async ({ page
   await page.getByLabel('Artist', { exact: true }).fill('Faith No More')
   await page.getByRole('button', { name: 'Save draft', exact: true }).click()
   await page.goto('/associations')
+  await page.getByRole('button', { name: 'Local drafts', exact: true }).click()
   await expect(page.getByText('“easy afternoon”')).toBeVisible()
   await page.reload()
+  await page.getByRole('button', { name: 'Local drafts', exact: true }).click()
   await expect(page.getByText('“easy afternoon”')).toBeVisible()
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export drafts' }).click()
@@ -29,8 +31,7 @@ test('real dictionary, image, persisted draft, backup and layout', async ({ page
   const card = page.locator('article').filter({ hasText: 'easy afternoon' })
   await card.getByRole('button', { name: 'Revise association' }).click()
   await page.getByLabel('Approximate sound-alike').fill('easy chair')
-  await page.getByRole('button', { name: 'Publish image', exact: true }).click()
-  await expect(page.getByText(/Connect PAGS on About & connection/).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /Publish.*image/ })).toHaveCount(0)
   await expect(page.getByRole('dialog')).toBeVisible()
   await page.getByRole('button', { name: 'Save draft', exact: true }).click()
   await page.goto('/connection')
@@ -40,7 +41,7 @@ test('real dictionary, image, persisted draft, backup and layout', async ({ page
 })
 
 test('alternate readings, no-match, and invalid callback', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/lookup')
   await page.getByPlaceholder('Hanzi, pinyin, or English · 椅子, yǐzi, chair').fill('行')
   await page.getByRole('button', { name: 'Characters', exact: true }).click()
   await expect(page.getByRole('button', { name: /行.*xíng/ }).first()).toBeVisible({ timeout: 30000 })
@@ -55,15 +56,16 @@ test('alternate readings, no-match, and invalid callback', async ({ page }) => {
 
 test('invalid backup and storage quota warning', async ({ page }) => {
   await page.goto('/associations')
+  await page.getByRole('button', { name: 'Local drafts', exact: true }).click()
   await page.getByLabel('Import backup file').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{"version":999,"drafts":[]}') })
   await expect(page.getByText(/could not be validated/)).toBeVisible()
   await page.addInitScript(() => {
     const set = Storage.prototype.setItem
     Storage.prototype.setItem = function(key, value) { if (key === 'yi.drafts.v1') throw new DOMException('quota', 'QuotaExceededError'); return set.call(this, key, value) }
   })
-  await page.goto('/')
+  await page.goto('/lookup')
   await page.getByRole('button', { name: /Make this association yours/ }).click()
   await page.getByLabel('Approximate sound-alike').fill('still in memory')
   await expect(page.getByText(/Drafts could not be saved/)).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Publish new image' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: /Publish.*image/ })).toHaveCount(0)
 })
