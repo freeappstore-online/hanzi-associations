@@ -6,8 +6,8 @@ https://hanzi-associations.freeappstore.online remains supported.
 
 - Search 125,356 CC-CEDICT entries by simplified/traditional hanzi, pinyin, or
   English. Filter words or single characters and choose alternate readings.
-- Browse the shared public library without login or any PAGS calls. Copy public
-  cards into separate device-only drafts.
+- Browse the shared public library without login or PAGS calls when no pending owner
+  request is being tracked. Copy public cards into separate device-only drafts.
 - Save sound, character, or meaning associations locally; revise descriptions
   and optional music cues; import/export JSON backups.
 - Publish images through the owner's private PAGS artist using direct Codex
@@ -48,8 +48,10 @@ configuration is changed by Yi.
 `coding_session_message` has no server-side idempotency parameter. Yi uses Web
 Locks across tabs, writes a local durable request receipt before sending, and
 never automatically resends an uncertain request. It reconciles sessions and
-polls timeline/capture every 12 seconds only on the visible connection page with
-verified ownership; public browsing never invokes PAGS. A lost acknowledgement
+checks active pending requests every 12 seconds while visible on any page.
+Each check first tries public deployment proof, including when OAuth has expired.
+Authenticated reads are allowed for saved pending tracking or explicit owner
+work; ordinary public browsing without pending work never invokes PAGS. A lost acknowledgement
 can remain uncertain and require owner investigation in PAGS. This prevents
 blind retries; it cannot enforce a cross-device server lock. Do not clear a
 pending receipt to bypass it. Queued means acknowledged, generating means the
@@ -75,8 +77,19 @@ FreeAppStore and PAGS sign-ins are independent. Only authenticated PAGS `whoami`
 identity (login/provider) is displayed, with an honest owner-verification fallback
 if identity metadata is unavailable. No name is hardcoded. Verification lasts for
 the current valid OAuth session, is revoked on expiry/disconnect/session changes
-or failures, and all guards run again before dispatch. Generation consumes the
+or explicit access denial. Slow checks, transient read failures and a busy runner
+do not erase known ownership. All guards run again before dispatch. Generation consumes the
 connected owner's Codex subscription; public browsing does not.
+
+Opening a draft, Local drafts or About & connection automatically checks a saved
+PAGS session. There is no persisted trusted ownership flag. Draft cards and editors
+show Draft, Queued, Generating, Publishing, Published or Failed, and explain
+unconfirmed delivery, unavailable status or a needed connection. Saving and editing
+remain local and available throughout. Completed receipts remain completed when
+image verification is delayed or unavailable; they never silently revert to Draft.
+Only images related to local draft/request IDs are checked, with successful checks
+cached by image path and SHA. Local revisions are shown separately from the last
+published image and from the snapshot of an in-flight request.
 
 Recent activity is up to 50 device-only publication receipts, with timestamps and
 status, shared by accounts using this browser/hostname. It is not account-wide

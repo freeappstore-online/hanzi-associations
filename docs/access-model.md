@@ -2,7 +2,7 @@
 
 Yi's landing page and `/associations` show the same shared public library.
 Viewing, searching, refreshing images and copying cards require no account and
-make no PAGS calls. `/lookup` is the dictionary. Local drafts have their own tab;
+make no PAGS calls unless a saved pending owner request is being tracked. `/lookup` is the dictionary. Local drafts have their own tab;
 they never overlay public cards, including legacy drafts with a public card's ID.
 Copying a public card creates a new local draft ID. Draft storage and JSON backup
 formats are unchanged. No existing public card or image was changed for this work.
@@ -36,8 +36,11 @@ profiles are not used.
 Verification remains valid for the current OAuth session (with the existing
 30-second expiry margin); it does not expire every minute during editing.
 Disconnect, expiry, token/client/expiry or authenticated account identity changes,
-and verification/transport failures
-revoke authorization. Storage/focus/visibility events and a one-second local timer
+and explicit access denials revoke authorization. Ownership and repository binding
+are separate from engine/session readiness. A slow recheck, unavailable network
+read, or busy runner does not erase an already established identity. Malformed
+ownership data still fails closed. Fresh server checks are mandatory before every
+dispatch, even when the identity remains visible. Storage/focus/visibility events and a one-second local timer
 remove stale UI. Every client operation checks the captured session before and
 after asynchronous work. A client that observes a session change is permanently
 unusable. Late OAuth exchanges cannot overwrite a switched or disconnected
@@ -79,12 +82,35 @@ not an account-wide PAGS audit log. Existing pending receipts remain readable;
 older generations cannot be reconstructed. Legacy update time uses the original
 request time until the next status observation.
 
-Polling is limited to the visible connection page with verified ownership and a
-pending request. Public library browsing never polls PAGS, even with a saved OAuth
-session and pending receipt. Returning to the connection page permits status
-checks without resending generation. Public index plus raster SHA-256 are the only
-proof of publication. Acknowledged, generating and pushed-commit states are not
-proof of a live image.
+A single workflow coordinator checks active pending requests every 12 seconds on
+any visible page, and on focus, visibility restoration or network recovery. A
+synchronous in-flight guard prevents overlapping verification, polling and sending.
+The interval does not depend on checking/status/ownership changes, so slow responses
+cannot reset and starve it. Session changes invalidate late work. Every check starts
+with the public index and raster SHA-256; expired/disconnected OAuth does not prevent
+public reconciliation. Missing private status is reported as connection needed or
+status unavailable, without silently changing the last observed request state.
+
+Opening Local drafts, an editor or About & connection establishes ownership from a
+valid saved OAuth session automatically, including after reload. No trusted boolean
+is persisted. Anonymous public browsing, or saved OAuth without pending/owner work,
+makes zero PAGS calls. Explicit owner work or saved pending tracking may use private
+reads. Acknowledgement, a working session and a pushed-commit marker are not proof
+of publication. The shared library is refreshed after matching deployment proof.
+
+Receipts include draftId. Legacy rows resolve that field only from the matching
+pending request or a deployed index record with the same requestId, never from word
+text. Unmatched rows remain unassigned. Migration preserves request IDs and is
+bounded to 50 rows. An unresolved history receipt also prevents a new dispatch if
+its pending snapshot was lost; investigate rather than guessing a new request.
+
+Draft status distinguishes the pending snapshot, current local edits, and the last
+verified public image. A completed receipt without a currently verified matching
+image says “Checking published image” or “Published image unavailable”; it offers a
+public image recheck and does not offer generation as if nothing had happened.
+Only local draft/request image IDs are hashed. Successful checks (including shared
+in-flight checks) are cached by path and SHA for the mounted workspace, and failed
+checks can be retried. This cache proves public content only, never authorization.
 
 The full-activity link uses the verified PAGS homepage,
 https://proagentstore.online (HTTP 200 checked 3 November 2026). Select the private
@@ -114,3 +140,37 @@ A reusable public artist template, newcomer setup guide, selecting one's own
 instance, and reviewed community contributions are separate future work. None is
 available in this delivery. The private artist template has not been published,
 and connecting a different account does not grant publishing access.
+
+## Issue #2 investigation and regressions
+
+Observed in the pre-fix UI with a synthetic 1.6-second ownership read: the identity
+was absent during the recheck, and absent after reload. The real SDK Shell link
+round trip retained identity in that reproduction. We did not reproduce permanent
+identity loss after the delayed recheck, nor claim that navigation alone revoked it.
+
+Code inspection found that #verifyTarget revoked ownership at the beginning of
+every check, while a one-second UI timer cleared the displayed identity during
+that gap. Status polling required that displayed identity and the connection path;
+reconciliation did not restore identity via an explicit success callback until the
+whole status check returned. Its timer also restarted on checking/verified changes.
+Reload had no automatic ownership restoration. Those are the identified mechanisms;
+the exact production timing of the original cello symptom was not replayed.
+
+Regressions use actual SDK navigation links (and the mobile Menu), reloads, real
+12-second periodic polls, delayed synthetic MCP responses and synthetic deployment
+index/image responses. They cover one accepted dispatch through queued, generating,
+publishing and checksum-proven publication; local edits during a request; expired
+legacy cello reconciliation with zero private calls; unavailable/completed image
+states; targeted image caching; failure/uncertain states; and access revocation.
+No real generation, account change or production authorization experiment is part
+of these tests. The six existing raster assets and index must remain byte-identical
+to b66041c5d5e51a901f6216c996ab66b282ca0463.
+
+Local delivery validation: 45 unit tests, 40 distinct browser scenarios across
+full and targeted runs (mobile and desktop), two styling tests, production build,
+and all six association validations. Screenshots of both viewports were inspected.
+The mobile image-loading assertion now scrolls lazy images into view; counts come
+from the index. A timed poll assertion was widened from 20 to 40 seconds after one
+loaded-machine timeout; the application interval remains 12 seconds and the slow
+synthetic read remains 1.6 seconds. Final affected lifecycle runs passed on both
+viewports without manual status clicks. No generation request reached production.

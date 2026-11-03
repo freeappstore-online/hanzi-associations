@@ -68,7 +68,7 @@ test('successful owner dispatch rechecks all guards and records one queued recei
   const f = fixture(); await f.client.connect(f.session); await f.client.verify(); f.calls.length = 0
   const request = createRequest(draft, null)
   await f.client.publish(request, f.storage, () => {})
-  assert.deepEqual(f.calls, ['my_instances', 'coding_repos_list', 'coding_engine_get', 'coding_sessions_list', 'whoami', 'coding_timeline', 'coding_session_capture', 'coding_session_message'])
+  assert.deepEqual(f.calls, ['my_instances', 'coding_repos_list', 'whoami', 'coding_engine_get', 'coding_sessions_list', 'coding_timeline', 'coding_session_capture', 'coding_session_message'])
   assert.equal(loadPending(f.storage)?.status, 'queued'); assert.equal(loadPending(f.storage)?.sessionId, 'csess-test')
   assert.equal(loadReceipts(f.storage)[0].status, 'queued')
   await assert.rejects(() => f.client.publish(request, f.storage, () => {}), /receipt/)
@@ -80,23 +80,23 @@ test('lost send remains uncertain, survives reload, and cannot be resent directl
   const request = createRequest(draft, null)
   await f.client.publish(request, f.storage, () => {})
   const restored = loadPending(f.storage)!
-  assert.equal(restored.status, 'uncertain'); assert.equal(restored.id, request.id); assert.equal(f.client.verification, null)
+  assert.equal(restored.status, 'uncertain'); assert.equal(restored.id, request.id); assert.ok(f.client.verification)
   assert.throws(() => createRequest(draft, restored), /already pending/)
   await assert.rejects(() => f.client.publish(request, f.storage, () => {}), /receipt/)
   assert.equal(f.calls.filter(n => n === 'coding_session_message').length, 1)
   assert.ok(!JSON.stringify(restored).includes('private token'))
 })
-test('busy artist blocks dispatch and revokes verification', async () => {
+test('busy artist blocks dispatch without losing verified ownership', async () => {
   const f = fixture(); await f.client.connect(f.session); await f.client.verify()
   f.setHandle(name => name === 'coding_session_capture' ? { ...response(name) as object, runState: 'thinking', ready: false } : response(name))
   await assert.rejects(() => f.client.publish(createRequest(draft, null), f.storage, () => {}), /busy/)
-  assert.ok(!f.calls.includes('coding_session_message')); assert.equal(loadPending(f.storage), null); assert.equal(f.client.verification, null)
+  assert.ok(!f.calls.includes('coding_session_message')); assert.equal(loadPending(f.storage), null); assert.ok(f.client.verification)
 })
-for (const guard of ['my_instances', 'coding_repos_list', 'coding_engine_get', 'coding_sessions_list', 'whoami']) test(`fresh ${guard} failure blocks previously verified owner dispatch`, async () => {
+for (const guard of ['my_instances', 'coding_repos_list', 'whoami', 'coding_engine_get', 'coding_sessions_list']) test(`fresh ${guard} failure blocks previously verified owner dispatch`, async () => {
   const f = fixture(); await f.client.connect(f.session); await f.client.verify()
   f.setHandle(name => name === guard ? {} : response(name))
   await assert.rejects(() => f.client.publish(createRequest(draft, null), f.storage, () => {}))
-  assert.equal(f.client.verification, null); assert.ok(!f.calls.includes('coding_session_message'))
+  assert.equal(Boolean(f.client.verification), ['coding_engine_get', 'coding_sessions_list'].includes(guard)); assert.ok(!f.calls.includes('coding_session_message'))
 })
 for (const mode of ['disconnect', 'expire', 'switch', 'close']) test(`${mode} revokes verification and prevents old client reuse`, async () => {
   const f = fixture(); await f.client.connect(f.session); await f.client.verify()
@@ -146,7 +146,7 @@ test('receipt storage failure prevents dispatch', async () => {
 test('schema changes fail closed and never forward unknown parameters', async () => {
   const f = fixture(); f.setTools(tools.map(t => t.name === 'coding_session_message' ? { ...t, inputSchema: { type: 'object', properties: {} } } : t)); await f.client.connect(f.session)
   await f.client.publish(createRequest(draft, null), f.storage, () => {})
-  assert.ok(!f.calls.includes('coding_session_message')); assert.equal(f.client.verification, null)
+  assert.ok(!f.calls.includes('coding_session_message')); assert.ok(f.client.verification)
 })
 test('device history retains bounded timestamped receipts without briefs or private output', () => {
   const s = store()
@@ -189,4 +189,50 @@ test('reverification begun by a receipt callback cannot race a dispatch', async 
   }), /Verification changed/)
   await reverify
   assert.ok(!f.calls.includes('coding_session_message')); assert.equal(f.client.verification, null)
+})
+
+
+test('slow and transient ownership checks preserve identity; real denial revokes it', async () => {
+  const f = fixture(); await f.client.connect(f.session); await f.client.verify()
+  const gate = deferred(), entered = deferred()
+  f.setHandle(async name => { if (name === 'my_instances') { entered.resolve(); await gate.promise; throw Error('network-private-detail') } return response(name) })
+  const checking = f.client.verify(); await entered.promise
+  assert.ok(f.client.verification)
+  gate.resolve(); await assert.rejects(() => checking, /Status unavailable/)
+  assert.ok(f.client.verification)
+  f.setHandle(name => name === 'my_instances' ? { error: 'permission denied' } : response(name))
+  await assert.rejects(() => f.client.verify(), /denied/)
+  assert.equal(f.client.verification, null)
+})
+
+test('legacy receipts map only by request ID from pending or deployed index', () => {
+  const s = store(), pending = createRequest(draft, null)
+  s.setItem(PENDING_KEY, JSON.stringify(pending))
+  const other = createRequest(draft, null)
+  s.setItem(HISTORY_KEY, JSON.stringify([pending, other].map(p => ({ id: p.id, word: draft.entry.simplified, status: 'queued', createdAt: p.createdAt, updatedAt: p.createdAt }))))
+  assert.equal(loadReceipts(s)[0].draftId, draft.id)
+  assert.equal(loadReceipts(s)[1].draftId, undefined)
+  assert.equal(loadReceipts(s, [{ ...draft, requestId: other.id }])[1].draftId, draft.id)
+})
+
+test('completed receipt never downgrades to a never-published draft while image is unavailable', async () => {
+  const { draftProgress } = await import('../web/src/publication.ts')
+  const pending = { ...createRequest(draft, null), status: 'published' as const }
+  assert.equal(draftProgress(draft, pending, [], []).label, 'Checking published image')
+  assert.equal(draftProgress(draft, pending, [], [], true).label, 'Published image unavailable')
+  assert.equal(draftProgress(draft, pending, [], [{ ...draft, requestId: pending.id }]).label, 'Published')
+  assert.equal(draftProgress({ ...draft, cue: 'edited after publication' }, pending, [], [{ ...draft, requestId: pending.id }]).label, 'Draft')
+  const s = store(); savePending(s, pending)
+  assert.equal(draftProgress(draft, null, loadReceipts(s), []).label, 'Checking published image')
+})
+
+
+test('verification started during engine reads invalidates the prepared dispatch', async () => {
+  const f = fixture(), gate = deferred(), entered = deferred()
+  await f.client.connect(f.session)
+  f.setHandle(async name => { if (name === 'coding_engine_get') { entered.resolve(); await gate.promise } return response(name) })
+  const publishing = f.client.publish(createRequest(draft, null), f.storage, () => {})
+  await entered.promise; await f.client.verify(); gate.resolve()
+  await assert.rejects(() => publishing, /Verification changed/)
+  assert.ok(!f.calls.includes('coding_session_message'))
 })

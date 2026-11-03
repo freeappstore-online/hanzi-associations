@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { draftSchema, type Draft, type Store } from './model'
+import { draftSchema, type Draft, type Published, type Store } from './model'
 
 export const INSTANCE_ID = 'abfc80a9-a7c3-4951-b7b3-85f826e4fdfa'
 export const REPO_ID = 'repo_5d14d39b-dfdb-4a4e-a94b-a71c7a11b6d6'
@@ -18,22 +18,22 @@ export function loadPending(store: Store): Pending | null {
   catch { throw new Error('The saved publication receipt could not be read. Publishing is blocked to avoid a duplicate. Recover this device’s storage before trying again.') }
 }
 export const HISTORY_KEY = 'yi.publish.history.v1'
-const receiptSchema = z.object({ id: z.string().uuid(), word: z.string().max(80), status: pendingSchema.shape.status, createdAt: z.string().datetime(), updatedAt: z.string().datetime() })
+const receiptSchema = z.object({ id: z.string().uuid(), draftId: draftSchema.shape.id.optional(), word: z.string().max(80), status: pendingSchema.shape.status, createdAt: z.string().datetime(), updatedAt: z.string().datetime() })
 export type Receipt = z.infer<typeof receiptSchema>
-export function loadReceipts(store: Store): Receipt[] {
+export function loadReceipts(store: Store, published: Published[] = []): Receipt[] {
   try {
     const raw = store.getItem(HISTORY_KEY)
     const history = raw ? z.array(receiptSchema).max(50).parse(JSON.parse(raw)) : []
     const pending = loadPending(store)
-    if (pending && !history.some(r => r.id === pending.id)) history.unshift({ id: pending.id, word: pending.draft.entry.simplified, status: pending.status, createdAt: pending.createdAt, updatedAt: pending.createdAt })
-    return history.slice(0, 50)
+    if (pending && !history.some(r => r.id === pending.id)) history.unshift({ id: pending.id, draftId: pending.draft.id, word: pending.draft.entry.simplified, status: pending.status, createdAt: pending.createdAt, updatedAt: pending.createdAt })
+    return history.slice(0, 50).map(r => ({ ...r, ...(pending?.id === r.id ? { status: pending.status } : {}), draftId: r.draftId ?? (pending?.id === r.id ? pending.draft.id : published.find(p => p.requestId === r.id)?.id) }))
   } catch { throw new Error('Device publication history could not be read. Recover browser storage before publishing.') }
 }
 export function savePending(store: Store, pending: Pending) {
   try {
     const valid = pendingSchema.parse(pending)
     const history = loadReceipts(store).filter(r => r.id !== valid.id)
-    const receipt: Receipt = { id: valid.id, word: valid.draft.entry.simplified, status: valid.status, createdAt: valid.createdAt, updatedAt: new Date().toISOString() }
+    const receipt: Receipt = { id: valid.id, draftId: valid.draft.id, word: valid.draft.entry.simplified, status: valid.status, createdAt: valid.createdAt, updatedAt: new Date().toISOString() }
     // A durable pending receipt precedes dispatch even if history storage then fails.
     store.setItem(PENDING_KEY, JSON.stringify(valid))
     store.setItem(HISTORY_KEY, JSON.stringify([receipt, ...history].slice(0, 50)))
@@ -67,8 +67,7 @@ END_CREATIVE_BRIEF_JSON`
 export function assertTarget(instances: unknown, repos: unknown, engine: unknown, sessions: unknown) {
   const owned = z.object({ instances: z.array(z.object({ id: z.string(), status: z.string() })) }).parse(instances)
   if (!owned.instances.some(i => i.id === INSTANCE_ID && i.status === 'active')) throw new Error('This account does not own the configured Yi artist. Local drafts and dictionary lookup are still available.')
-  const bound = z.object({ repos: z.array(z.object({ id: z.string(), githubRepo: z.string(), cloneStatus: z.string() })) }).parse(repos)
-  if (bound.repos.length !== 1 || bound.repos[0].id !== REPO_ID || bound.repos[0].githubRepo !== REPO || bound.repos[0].cloneStatus !== 'ready') throw new Error('The artist must be bound only to the ready Yi repository.')
+  assertBinding(repos)
   const engines = z.object({ defaultEngineId: z.string(), engines: z.array(z.object({ id: z.string(), billing: z.string() })) }).parse(engine)
   if (engines.defaultEngineId !== 'codex' || !engines.engines.some(e => e.id === 'codex' && e.billing === 'subscription')) throw new Error('Publishing requires Codex with subscription billing. No API fallback is allowed.')
   const active = sessionList(sessions).filter(s => s.status !== 'ended')
@@ -76,3 +75,18 @@ export function assertTarget(instances: unknown, repos: unknown, engine: unknown
   return active[0]
 }
 export const sessionList = (value: unknown) => z.array(z.object({ id: z.string(), repoId: z.string(), clientType: z.string(), status: z.string() })).parse(value)
+
+export function assertBinding(repos: unknown) {
+  const bound = z.object({ repos: z.array(z.object({ id: z.string(), githubRepo: z.string(), cloneStatus: z.string() })) }).parse(repos)
+  if (bound.repos.length !== 1 || bound.repos[0].id !== REPO_ID || bound.repos[0].githubRepo !== REPO || bound.repos[0].cloneStatus !== 'ready') throw new Error('The artist must be bound only to the ready Yi repository.')
+}
+
+// Migrate identity only from exact request IDs; unmatched legacy rows stay unassigned.
+export function migrateReceipts(store: Store, published: Published[]): Receipt[] {
+  const receipts = loadReceipts(store, published)
+  if (receipts.length && JSON.stringify(receipts) !== store.getItem(HISTORY_KEY)) {
+    try { store.setItem(HISTORY_KEY, JSON.stringify(receipts)) }
+    catch { throw new Error('Cannot update device receipts. Publishing is blocked until storage is available.') }
+  }
+  return receipts
+}

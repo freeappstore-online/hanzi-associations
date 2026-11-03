@@ -4,8 +4,8 @@ import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import { getSession, ISSUER, type OAuthSession } from './oauth'
-import { assertTarget, generationInstruction, INSTANCE_ID, REPO_ID, loadPending, loadReceipts, pendingSchema, savePending, sessionList, type Pending } from './generation'
-import { fetchIndex, verifyImage, type Store } from './model'
+import { assertBinding, assertTarget, generationInstruction, INSTANCE_ID, REPO_ID, loadPending, loadReceipts, pendingSchema, savePending, sessionList, type Pending } from './generation'
+import { fetchIndex, verifyImage, type Store, type Published } from './model'
 
 const required = ['my_instances', 'coding_repos_list', 'coding_engine_get', 'coding_sessions_list', 'coding_session_capture', 'coding_timeline', 'coding_session_message'] as const
 const allowed = [...required, 'whoami'] as const
@@ -13,16 +13,19 @@ type ToolName = typeof allowed[number]
 const captureSchema = z.object({ sessionId: z.string().optional(), runState: z.string(), runnerConnected: z.boolean(), alive: z.boolean().optional(), ready: z.boolean().optional(), authPrompt: z.unknown().optional(), pane: z.string().optional(), ownership: z.object({ owners: z.array(z.unknown()) }).optional() })
 const timelineSchema = z.object({ sessionId: z.string().nullable().optional(), repoId: z.string().nullable().optional(), nextSeq: z.number().optional(), events: z.array(z.object({ seq: z.number(), type: z.string(), content: z.string().optional() })) })
 
+export class StatusUnavailable extends Error {}
+class AccessDenied extends Error {}
+
 // Never display raw MCP results: terminal output may contain private account data.
 function unpack(result: unknown): unknown {
   const r = z.object({ isError: z.boolean().optional(), structuredContent: z.unknown().optional(), content: z.array(z.object({ type: z.string(), text: z.string().optional() })).optional() }).parse(result)
-  if (r.isError) throw new Error('PAGS refused the operation. Check account permissions and runner availability in PAGS.')
+  if (r.isError) throw new AccessDenied('PAGS refused the operation. Check account permissions and runner availability in PAGS.')
   let value: unknown = r.structuredContent
   if (!value) {
     const text = r.content?.filter(c => c.type === 'text').map(c => c.text).join('\n') || ''
     try { value = JSON.parse(text) } catch { value = text }
   }
-  if (value && typeof value === 'object' && 'error' in value || typeof value === 'string' && /^(Error|Authentication required|Permission denied)/i.test(value)) throw new Error('PAGS refused the operation. Reconnect or check the artist in PAGS.')
+  if (value && typeof value === 'object' && 'error' in value || typeof value === 'string' && /^(Error|Authentication required|Permission denied)/i.test(value)) throw new AccessDenied('PAGS refused the operation. Reconnect or check the artist in PAGS.')
   return value
 }
 
@@ -109,22 +112,23 @@ export class Pags {
       const result = await this.#client.callTool({ name, arguments: args }, undefined, { timeout: 60000 })
       this.#assertCurrent()
       return unpack(result)
-    } catch {
-      this.#revoke()
-      throw new Error('PAGS did not confirm the operation. Verify the connection and check status before trying anything else.')
+    } catch (error) {
+      const code = (error as { code?: number; status?: number })?.code ?? (error as { status?: number })?.status
+      if (error instanceof AccessDenied || code === 401 || code === 403 || !this.isCurrent()) {
+        this.#revoke()
+        throw new AccessDenied('PAGS denied access or the session changed. Reconnect or check your account permissions.')
+      }
+      throw new StatusUnavailable('Status unavailable. Yi will retry automatically; no request will be resent.')
     }
   }
-  async #verifyTarget() {
-    this.#revoke()
-    const revision = this.#revision
+  async #verifyOwner() {
+    const revision = ++this.#revision
     try {
       const instances = await this.#call('my_instances', {})
       const owned = z.object({ instances: z.array(z.object({ id: z.string(), status: z.string() })) }).parse(instances)
       if (!owned.instances.some(i => i.id === INSTANCE_ID && i.status === 'active')) throw new Error('This account does not own the configured Yi artist. Public cards and local drafts remain available.')
       const repos = await this.#call('coding_repos_list', { instance_id: INSTANCE_ID })
-      const engine = await this.#call('coding_engine_get', { instance_id: INSTANCE_ID })
-      const sessions = await this.#call('coding_sessions_list', { instance_id: INSTANCE_ID })
-      const session = assertTarget(instances, repos, engine, sessions)
+      assertBinding(repos)
       // whoami is authenticated account identity; never read candidate/profile data.
       const identity = this.#schemas.has('whoami') ? z.object({ id: z.string().min(1), login: z.string().min(1), provider: z.enum(['google', 'github']), providerLabel: z.string().min(1) }).parse(await this.#call('whoami', {})) : undefined
       const bound = z.object({ repos: z.array(z.object({ userId: z.unknown().optional() })) }).parse(repos)
@@ -137,10 +141,16 @@ export class Pags {
       if (revision !== this.#revision) throw new Error('Verification changed while checking. Verify the current account again.')
       this.#accountId = accountId
       this.#verification = verification
-      return { session, verification: { ...verification } }
-    } catch (error) { this.#revoke(); throw error }
+      return { instances, repos, revision, verification: { ...verification } }
+    } catch (error) { if (!(error instanceof StatusUnavailable)) this.#revoke(); throw error }
   }
-  async verify() { return (await this.#verifyTarget()).verification }
+  async #verifyTarget() {
+    const owner = await this.#verifyOwner()
+    const engine = await this.#call('coding_engine_get', { instance_id: INSTANCE_ID })
+    const sessions = await this.#call('coding_sessions_list', { instance_id: INSTANCE_ID })
+    return { ...owner, session: assertTarget(owner.instances, owner.repos, engine, sessions) }
+  }
+  async verify() { return (await this.#verifyOwner()).verification }
   async publish(request: Pending, storage: Store, onUpdate: (p: Pending) => void) {
     this.#assertCurrent()
     if (this.#sending) throw new Error('A publication is already being prepared. Check its status.')
@@ -148,10 +158,9 @@ export class Pags {
     try {
       const valid = pendingSchema.parse(request)
       const existing = loadPending(storage)
-      if (loadReceipts(storage).some(r => r.id === valid.id) || existing && !['published', 'failed'].includes(existing.status)) throw new Error('This device already has a publication receipt. Check its status; never resend an uncertain request.')
+      if (loadReceipts(storage).some(r => r.id === valid.id || !['published', 'failed'].includes(r.status)) || existing && !['published', 'failed'].includes(existing.status)) throw new Error('This device already has a publication receipt. Check its status; never resend an uncertain request.')
       // This private path runs even when a caller skips the UI or overrides verify().
-      const { session } = await this.#verifyTarget()
-      const revision = this.#revision
+      const { session, revision } = await this.#verifyTarget()
       let sinceSeq: number | undefined
       if (session) {
         const timeline = timelineSchema.parse(await this.#call('coding_timeline', { instance_id: INSTANCE_ID, session_id: session.id, limit: 1 }))
@@ -174,19 +183,16 @@ export class Pags {
         const next: Pending = { ...pending, sessionId: sid || pending.sessionId, status: 'queued', detail: 'PAGS accepted the message. Generation has not yet been observed.' }
         savePending(storage, next); onUpdate(next)
       } catch {
-        this.#revoke()
         onUpdate(pending) // It may have been sent. Never retry automatically.
       }
-    } catch (error) { this.#revoke(); throw error }
-    finally { this.#sending = false }
+    } finally { this.#sending = false }
   }
-  async reconcile(request: Pending): Promise<Pending> {
-    try { return await this.#reconcile(request) }
-    catch (error) { this.#revoke(); throw error }
+  async reconcile(request: Pending, cards?: Published[]): Promise<Pending> {
+    return this.#reconcile(request, cards)
   }
-  async #reconcile(request: Pending): Promise<Pending> {
+  async #reconcile(request: Pending, cards?: Published[]): Promise<Pending> {
     // Deployed data is the only proof of publication; no terminal success heuristic.
-    const published = await fetchIndex()
+    const published = cards ?? await fetchIndex()
     const match = published.find(p => p.requestId === request.id && p.id === request.draft.id)
     if (match) {
       try { await verifyImage(match); return { ...request, status: 'published', detail: 'The published index and raster image are live, and the image checksum matches.' } }
@@ -204,7 +210,7 @@ export class Pags {
     }
     if (!sid) return { ...request, status: 'uncertain', detail: 'Delivery is still unconfirmed. The request will not be resent. Check the artist’s timeline in PAGS.' }
     const timeline = timelineSchema.parse(await this.#call('coding_timeline', { instance_id: INSTANCE_ID, session_id: sid, limit: 40, ...(request.sinceSeq !== undefined ? { since_seq: request.sinceSeq } : {}) }))
-    if (timeline.repoId && timeline.repoId !== REPO_ID) throw new Error('The request session no longer matches Yi.')
+    if (timeline.repoId && timeline.repoId !== REPO_ID || timeline.sessionId && timeline.sessionId !== sid) throw new Error('The request session no longer matches Yi.')
     // Only exact standalone marker lines qualify; the original prompt contains inline examples.
     const report = timeline.events.filter(e => e.type !== 'user' && e.type !== 'instruction').map(e => e.content || '').join('\n')
     const next = { ...request, sessionId: sid, sinceSeq: timeline.nextSeq ?? request.sinceSeq }
@@ -212,6 +218,7 @@ export class Pags {
     if (new RegExp(`^YI_COMMITTED ${request.id} [a-f0-9]{40}$`, 'm').test(report)) return { ...next, status: 'deploying', detail: 'The artist reports a pushed commit. Waiting for the deployed index and verified image.' }
     if (session?.id === sid) {
       const capture = captureSchema.parse(await this.#call('coding_session_capture', { instance_id: INSTANCE_ID, session_id: sid }))
+      if (capture.sessionId && capture.sessionId !== sid) throw new Error('The request session no longer matches Yi.')
       if (!capture.runnerConnected || capture.authPrompt) return { ...next, detail: 'The artist is offline or needs sign-in. This request remains pending; it will not be resent.' }
       if (capture.runState === 'thinking' || capture.runState === 'responding') return { ...next, status: 'generating', detail: 'The request’s Codex session is working. Publication is not yet verified.' }
     }
