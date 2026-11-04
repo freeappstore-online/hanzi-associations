@@ -3,6 +3,8 @@ import type { FreeAppStore } from '@freeappstore/sdk'
 import { useAuth } from '@freeappstore/sdk/hooks'
 import { Badge, Card, PageHeader, ProfilePage, SignInButton } from '@freeappstore/sdk/ui'
 import { Button } from './ui'
+import { DEFAULT_SIZES, SIZE_LIMITS, useReading, type ReadingSizes } from './reading'
+import { Word } from './Word'
 import { statusLabel } from './publication'
 import type { usePublication } from './usePublication'
 
@@ -16,11 +18,23 @@ type Props = {
 const externalLink = 'inline-flex min-h-11 items-center text-sm font-semibold text-accent underline'
 
 export function Profile({ app, publication: p, draftCount, onExport, onImport }: Props) {
+  const { sizes, update, error: readingError } = useReading()
   const { user, loading } = useAuth(app)
   const upload = useRef<HTMLInputElement>(null)
   return <>
     <PageHeader title="Profile" description="Your accounts, connections and activity on this device." />
     <p className="text-sm text-muted">FreeAppStore and PAGS sign-ins are independent. You can browse Yi and save local drafts without either account.</p>
+    <Card padding="1.5rem" className="space-y-4 min-w-0">
+      <h2 className="text-xl font-bold">Reading sizes</h2>
+      {readingError && <p role="alert">{readingError}</p>}
+      {(Object.keys(SIZE_LIMITS) as (keyof ReadingSizes)[]).map(key => <label key={key} className="grid gap-2">
+        <span>{key === 'hanzi' ? 'Hanzi' : key === 'pinyin' ? 'Pinyin' : 'Translation'} · {sizes[key]}</span>
+        <input aria-label={`${key === 'hanzi' ? 'Hanzi' : key === 'pinyin' ? 'Pinyin' : 'Translation'} size`} className="min-h-11 w-full" type="range" min={SIZE_LIMITS[key][0]} max={SIZE_LIMITS[key][1]} step="1" value={sizes[key]} onChange={e => update({ ...sizes, [key]: Number(e.target.value) })} />
+      </label>)}
+      <Button secondary onClick={() => update({ ...DEFAULT_SIZES })}>Reset reading sizes</Button>
+      <div aria-label="Reading preview"><Word entry={{ simplified: '椅子', traditional: '椅子', pinyin: 'yi3 zi5', definitions: ['chair'] }} /></div>
+      <p className="text-sm text-muted">Tap Hanzi or pinyin to hear Mandarin. Offline speech needs an installed local Mandarin voice.</p>
+    </Card>
     <div className="grid items-start gap-6 md:grid-cols-2">
       <Card padding="1.5rem" className="space-y-4">
         <h2 className="text-xl font-bold">FreeAppStore account</h2>

@@ -132,3 +132,26 @@ App code: MIT. Dictionary: CC-CEDICT / MDBG, snapshot 2026-11-02, unchanged
 125,356-entry gzip, CC BY-SA 4.0. See `web/public/dictionary/NOTICE.txt`; its
 license applies separately to dictionary data and adaptations. Tone-mark and
 search normalization happen in memory and never replace source pronunciation.
+
+### Reading and pronunciation
+
+Tap a word's Hanzi (including its traditional form) or dictionary pinyin to hear
+that Chinese word through browser speech. Mnemonic cues never supply speech text.
+Each dictionary syllable has a 40×40 pitch diagram: level, rising, dipping,
+falling, or a neutral dot. These show dictionary tones, not writing strokes;
+connected speech may change tones. The diagrams adapt Hanzi's MIT implementation
+(see THIRD_PARTY_NOTICES.md).
+
+Profile → Reading sizes independently adjusts Hanzi (24–72), pinyin (16–40), and
+translation (16–36), with defaults 40/24/20, immediate preview, reset, and local
+persistence. Values are rem equivalents and respect the SDK global text setting.
+Storage errors remain visible. Mobile actions use named icons with 44px targets;
+learning content, form labels, access information and errors remain available.
+
+Speech requires a supported browser and Mandarin voice. Yi prefers installed
+local Mandarin voices, excludes Cantonese, and waits briefly for voices to load.
+Offline playback requires a local voice. A nonlocal OS/browser voice may require
+network access. There are no app audio API or PAGS calls, recordings, or autoplay.
+One utterance runs at a time and stops on navigation or closing its word/editor.
+Automated speech tests use mocks; audible playback on physical devices still
+needs device validation.

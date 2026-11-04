@@ -241,3 +241,35 @@ to the editor alert, and lazy-image checks wait for the index-derived card count
 before scrolling each image into view.
 FAS compliance passed all hard checks with the same two existing warnings:
 dictionary/NOTICE offline precaching and the CLAUDE.md SKILLS pointer.
+
+## Issue #5: local reading preferences and browser speech
+
+Reading sizes use the separate `yi.reading.v1` localStorage key, containing only
+three bounded numbers. Invalid values fall back with a visible error. Storage
+failure keeps the current tab's preview working; reset explicitly repairs values.
+No account, OAuth, publication, image, or dictionary data is changed by these controls.
+
+Pronunciation takes only the dictionary entry's Chinese word. Taps on pinyin or
+traditional Chinese use the same word; cues and image descriptions are never
+speech input. Browser voices load through `voiceschanged`; local Mandarin wins
+over remote Mandarin, Cantonese is excluded, and offline use requires local
+speech. Cancellation detaches callbacks and cancels the active utterance on
+replacement, navigation and component removal. Speech is user initiated and
+makes no application API/PAGS requests. Browser/OS remote voices may use network.
+Tests mock speech events and do not demonstrate audible device output.
+
+Issue #5 handoff verification: 61 unit tests passed (also rerun with concurrency
+2), all six association assets validated, and an earlier production build plus
+two styling checks passed. FAS hard checks passed with the same two existing
+warnings. The broad two-worker browser run finished with 56 passing and 6 failing:
+four new preference checks targeted a data attribute not forwarded by SDK Card
+(corrected to the labeled preview); one mobile test encountered missing sw.js
+because preview overlapped PWA generation; one existing desktop ownership test
+exceeded its overall timeout on the overloaded runner. Default mobile/desktop
+lookup screenshots were inspected. Maximum-size screenshot checks remain pending.
+The subsequent build passed TypeScript and Vite bundling but was terminated with
+SIGTERM before completing PWA generation, so its chained browser rerun did not
+start. The final decorative draft-Hanzi removal has not been rebuilt. Root is
+responsible for final build, browser verification, maximum-size screenshots and
+deployment after this bundle handoff. Do not interpret this as 62 browser passes
+or audible physical-device speech validation. No push or generation was attempted.
