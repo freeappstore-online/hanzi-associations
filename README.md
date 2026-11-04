@@ -123,8 +123,14 @@ images and all association metadata are public. Hostnames have separate browser
 storage; export/import to move drafts when switching hosts.
 
 The dictionary gzip (served as cedict.bin to avoid automatic HTTP decompression) is fetched lazily into a Web Worker on first search. It is
-not in the initial JS graph or service-worker precache; a new offline page may
-need to reconnect for dictionary search. Publication data is never precached.
+not in the initial JS graph or service-worker precache. After a successful first
+search, its validated snapshot is stored in versioned CacheStorage for offline
+reloads. First download requires a connection; denied cache access or clearing
+browser data removes this offline capability. Corrupt cached bytes are rejected
+and downloaded again when online. Publication data is never precached.
+Draft writes merge the latest stored versions under Web Locks, with cross-tab
+synchronization. Without Web Locks the merge is best effort: simultaneous tabs
+are not guaranteed safe. Failed saves remain exportable in the current tab.
 Browsers need DecompressionStream, Web Crypto and Web Locks for full support.
 Songs are title/artist with an external YouTube search link; no audio is copied.
 

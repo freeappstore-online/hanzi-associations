@@ -31,7 +31,7 @@ export function Profile({ app, publication: p, draftCount, onExport, onImport }:
         <span>{key === 'hanzi' ? 'Hanzi' : key === 'pinyin' ? 'Pinyin' : 'Translation'} · {sizes[key]}</span>
         <input aria-label={`${key === 'hanzi' ? 'Hanzi' : key === 'pinyin' ? 'Pinyin' : 'Translation'} size`} className="min-h-11 w-full" type="range" min={SIZE_LIMITS[key][0]} max={SIZE_LIMITS[key][1]} step="1" value={sizes[key]} onChange={e => update({ ...sizes, [key]: Number(e.target.value) })} />
       </label>)}
-      <Button secondary onClick={() => update({ ...DEFAULT_SIZES })}>Reset reading sizes</Button>
+      <Button icon="reset" secondary onClick={() => update({ ...DEFAULT_SIZES })}>Reset reading sizes</Button>
       <div aria-label="Reading preview"><Word entry={{ simplified: '椅子', traditional: '椅子', pinyin: 'yi3 zi5', definitions: ['chair'] }} /></div>
       <p className="text-sm text-muted">Tap Hanzi or pinyin to hear Mandarin. Offline speech needs an installed local Mandarin voice.</p>
     </Card>
@@ -48,10 +48,10 @@ export function Profile({ app, publication: p, draftCount, onExport, onImport }:
         <p className="text-sm text-muted">Image publishing requires Yi’s private PAGS artist and uses its owner’s Codex subscription. It does not use your FreeAppStore sign-in.</p>
         {p.verified && <div data-testid="owner-identity" className="rounded-xl border border-line bg-paper-deep p-4 text-sm"><p className="break-words font-semibold">{p.verified.label}</p><p>Verified artist ownership</p>{p.verified.accountId && <p className="mt-1 break-all text-xs text-muted">Account: {p.verified.accountId}</p>}<p className="mt-2 text-xs text-muted">Access is checked again before every dispatch.</p></div>}
         <div className="flex flex-wrap gap-2">{p.connected ? <>
-          <Button disabled={p.busy || p.checking} onClick={() => void p.checkConnection()}>{p.busy ? 'Checking artist…' : p.verified ? 'Check artist connection' : 'Retry connection check'}</Button>
-          <Button secondary disabled={p.busy} onClick={() => void p.connect()}>Reconnect PAGS</Button>
-          <Button secondary onClick={p.signOut}>Disconnect</Button>
-        </> : <Button disabled={p.busy} onClick={() => void p.connect()}>{p.busy ? 'Opening sign-in…' : 'Connect PAGS'}</Button>}</div>
+          <Button icon="refresh" disabled={p.busy || p.checking} onClick={() => void p.checkConnection()}>{p.busy ? 'Checking artist…' : p.verified ? 'Check artist connection' : 'Retry connection check'}</Button>
+          <Button icon="connect" secondary disabled={p.busy} onClick={() => void p.connect()}>Reconnect PAGS</Button>
+          <Button icon="disconnect" secondary onClick={p.signOut}>Disconnect</Button>
+        </> : <Button icon="connect" disabled={p.busy} onClick={() => void p.connect()}>{p.busy ? 'Opening sign-in…' : 'Connect PAGS'}</Button>}</div>
         <p className="text-xs text-muted">PAGS sign-in stays in this tab and expires automatically. Connect again after expiry. Disconnecting PAGS leaves FreeAppStore signed in and keeps your saved work. Yi requests read and runtime permissions only.</p>
         <a href="https://proagentstore.online" target="_blank" rel="noreferrer" className={externalLink}>Open PAGS for full activity ↗</a>
       </Card>
@@ -67,7 +67,7 @@ export function Profile({ app, publication: p, draftCount, onExport, onImport }:
       <div className="flex flex-wrap items-center gap-2"><Badge variant={p.pending.status === 'failed' ? 'danger' : p.pending.status === 'published' ? 'success' : 'warning'}>{statusLabel[p.pending.status]}</Badge><span lang="zh">{p.pending.draft.entry.simplified}</span></div>
       <p role="status" className="text-sm text-muted">{p.pending.detail}</p>
       {p.statusError && <p role="status" className="text-sm text-muted">{p.statusError}</p>}
-      {p.pending.status !== 'published' && <Button secondary disabled={p.busy || p.checking} onClick={() => void p.checkStatus()}>{p.checking ? 'Checking…' : 'Check publication'}</Button>}
+      {p.pending.status !== 'published' && <Button icon="refresh" secondary disabled={p.busy || p.checking} onClick={() => void p.checkStatus()}>{p.checking ? 'Checking…' : 'Check publication'}</Button>}
       <p className="break-all text-xs text-muted">Request {p.pending.id}</p>
     </Card>}
     <Card padding="1.5rem" className="space-y-3">
@@ -78,7 +78,7 @@ export function Profile({ app, publication: p, draftCount, onExport, onImport }:
     <Card padding="1.5rem" className="space-y-3">
       <h2 className="text-xl font-bold">Your local drafts</h2>
       <p className="text-sm text-muted">{draftCount} saved on this device. Export a backup before clearing browser data or moving to another hostname. Backups contain drafts only, never sign-in credentials or private logs.</p>
-      <div className="flex flex-wrap gap-2"><Button secondary onClick={onExport}>Export drafts</Button><Button secondary onClick={() => upload.current?.click()}>Import backup</Button></div>
+      <div className="flex flex-wrap gap-2"><Button icon="export" secondary onClick={onExport}>Export drafts</Button><Button icon="import" secondary onClick={() => upload.current?.click()}>Import backup</Button></div>
       <input ref={upload} type="file" accept=".json,application/json" className="hidden" aria-label="Import backup file" onChange={e => { void onImport(e.target.files?.[0]); e.target.value = '' }} />
     </Card>
   </>

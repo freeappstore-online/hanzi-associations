@@ -1,3 +1,4 @@
+import { localStore, sessionStore } from './storage'
 import { useEffect, useRef, useState } from 'react'
 import { beginOAuth, disconnect, getSession } from './oauth'
 import { createRequest, loadPending, loadReceipts, migrateReceipts, savePending, type Pending, type Receipt } from './generation'
@@ -10,7 +11,7 @@ const message = (error: unknown) => error instanceof Error && error.name !== 'Zo
 
 // One coordinator per mounted workspace. No trusted ownership flag is stored.
 export function usePublication(ownerWork: boolean, published: Published[], draftIds: string[], onPublished: (cards: Published[]) => void) {
-  const [connected, setConnected] = useState(Boolean(getSession(sessionStorage)))
+  const [connected, setConnected] = useState(Boolean(getSession(sessionStore)))
   const [verified, setVerified] = useState<OwnerVerification | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
   const [receipts, setReceipts] = useState<Receipt[]>([])
@@ -27,12 +28,12 @@ export function usePublication(ownerWork: boolean, published: Published[], draft
   const clientRef = useRef<Pags | null>(null)
   const epoch = useRef(0)
   const operation = useRef(false)
-  const snapshot = useRef(JSON.stringify(getSession(sessionStorage)))
+  const snapshot = useRef(JSON.stringify(getSession(sessionStore)))
   const state = useRef({ ownerWork, pending, published })
   state.current = { ownerWork, pending, published }
 
   function readStorage() {
-    try { setPending(loadPending(localStorage)); setReceipts(loadReceipts(localStorage, state.current.published)); setReceiptError('') }
+    try { setPending(loadPending(localStore)); setReceipts(loadReceipts(localStore, state.current.published)); setReceiptError('') }
     catch (error) { setReceiptError(message(error)) }
   }
   function revoke() {
@@ -42,7 +43,7 @@ export function usePublication(ownerWork: boolean, published: Published[], draft
     void old?.close()
   }
   function syncSession() {
-    const session = getSession(sessionStorage), next = JSON.stringify(session)
+    const session = getSession(sessionStore), next = JSON.stringify(session)
     if (next !== snapshot.current || clientRef.current && !clientRef.current.isCurrent()) {
       snapshot.current = next; revoke()
     }
@@ -50,13 +51,13 @@ export function usePublication(ownerWork: boolean, published: Published[], draft
     setVerified(clientRef.current?.verification ?? null)
   }
   async function client(started: number) {
-    if (!getSession(sessionStorage)) throw new Error('Connection needed for private status. Your saved request will not be resent.')
+    if (!getSession(sessionStore)) throw new Error('Connection needed for private status. Your saved request will not be resent.')
     if (clientRef.current?.isCurrent()) return clientRef.current
     const { Pags } = await import('./pags')
     if (started !== epoch.current) throw new Error('Connection changed.')
     const next = new Pags(() => { if (clientRef.current === next) setVerified(null) })
     clientRef.current = next
-    try { await next.connect(sessionStorage) }
+    try { await next.connect(sessionStore) }
     catch (error) { if (clientRef.current === next) clientRef.current = null; throw error }
     if (started !== epoch.current || !next.isCurrent()) { await next.close(); throw new Error('Connection changed.') }
     return next
@@ -82,15 +83,15 @@ export function usePublication(ownerWork: boolean, published: Published[], draft
   }
   async function checkStatus() {
     await run(async started => {
-      const request = loadPending(localStorage)
+      const request = loadPending(localStore)
       if (!request) throw new Error('Request details are unavailable on this device. Review activity in PAGS; do not resend.')
       // Public reconciliation always precedes private reads, even with expired auth.
       const cards = await fetchIndex()
       let next = await deployedResult(request, cards)
       if (started !== epoch.current) return
       if (!next) next = await (await client(started)).reconcile(request, cards)
-      if (started !== epoch.current || loadPending(localStorage)?.id !== request.id) return
-      savePending(localStorage, next); setPending(next); setReceipts(loadReceipts(localStorage, cards)); setStatusError(''); setError('')
+      if (started !== epoch.current || loadPending(localStore)?.id !== request.id) return
+      savePending(localStore, next); setPending(next); setReceipts(loadReceipts(localStore, cards)); setStatusError(''); setError('')
       if (next.status === 'published') {
         onPublished(cards)
         const image = cards.find(p => p.requestId === next.id && p.id === next.draft.id)!
@@ -105,10 +106,10 @@ export function usePublication(ownerWork: boolean, published: Published[], draft
       if (!navigator.locks) throw new Error('Use a browser with Web Locks to coordinate publishing safely.')
       await navigator.locks.request('yi-publication', { ifAvailable: true }, async lock => {
         if (!lock) throw new Error('Another Yi tab is publishing. Check status first.')
-        const request = createRequest(draft, loadPending(localStorage))
+        const request = createRequest(draft, loadPending(localStore))
         const current = await client(started)
         if (started !== epoch.current) return
-        await current.publish(request, localStorage, next => { if (started === epoch.current) { setPending(next); setReceipts(loadReceipts(localStorage, state.current.published)) } })
+        await current.publish(request, localStore, next => { if (started === epoch.current) { setPending(next); setReceipts(loadReceipts(localStore, state.current.published)) } })
         if (started === epoch.current) { setError(''); setStatusError('') }
       })
     })
@@ -117,12 +118,12 @@ export function usePublication(ownerWork: boolean, published: Published[], draft
     revoke()
     const started = epoch.current
     setBusy(true)
-    try { const url = await beginOAuth(sessionStorage, window.location.origin); if (started === epoch.current) window.location.assign(url) }
+    try { const url = await beginOAuth(sessionStore, window.location.origin); if (started === epoch.current) window.location.assign(url) }
     catch (error) { if (started === epoch.current) { setError(message(error)); setBusy(false) } }
   }
   function signOut() {
     revoke(); setConnected(false)
-    try { disconnect(sessionStorage); snapshot.current = JSON.stringify(null) }
+    try { disconnect(sessionStore); snapshot.current = JSON.stringify(null) }
     catch { setError('Browser storage could not be cleared. Close this tab to end its session.') }
   }
 
@@ -131,7 +132,7 @@ export function usePublication(ownerWork: boolean, published: Published[], draft
     syncSession()
     if (document.visibilityState !== 'visible' || operation.current) return
     if (activeRequest(state.current.pending)) void checkStatus()
-    else if (state.current.ownerWork && getSession(sessionStorage) && !clientRef.current?.verification) void checkConnection()
+    else if (state.current.ownerWork && getSession(sessionStore) && !clientRef.current?.verification) void checkConnection()
   }
   useEffect(() => {
     readStorage()
@@ -151,7 +152,7 @@ export function usePublication(ownerWork: boolean, published: Published[], draft
   useEffect(() => { tick.current() }, [ownerWork, connected, pending?.id])
   useEffect(() => {
     let cancelled = false
-    try { setReceipts(migrateReceipts(localStorage, published)) } catch (error) { setReceiptError(message(error)) }
+    try { setReceipts(migrateReceipts(localStore, published)) } catch (error) { setReceiptError(message(error)) }
     // Only local draft/request IDs are relevant. Cache successful immutable SHA checks,
     // including in-flight work; a rejected check remains retryable.
     if (ownerWork || activeRequest(pending)) {

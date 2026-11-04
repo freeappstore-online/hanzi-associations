@@ -42,12 +42,6 @@ export function importDrafts(raw: string, existing: Draft[]): Draft[] {
 export function newDraft(entry: Entry): Draft {
   return { id: crypto.randomUUID(), entry, type: 'sound', cue: '', description: '', songArtist: '', songTitle: '', updatedAt: new Date().toISOString() }
 }
-export function mergeCards(drafts: Draft[], published: Published[]) {
-  const rows = new Map<string, { draft: Draft; published?: Published }>()
-  for (const p of published) rows.set(p.id, { draft: p, published: p })
-  for (const d of drafts) rows.set(d.id, { draft: d, published: rows.get(d.id)?.published })
-  return [...rows.values()].sort((a, b) => b.draft.updatedAt.localeCompare(a.draft.updatedAt))
-}
 export function sameBrief(a: Draft, b: Draft) {
   return entryKey(a.entry) === entryKey(b.entry) && ['type', 'cue', 'description', 'songArtist', 'songTitle'].every(k => a[k as keyof Draft] === b[k as keyof Draft])
 }

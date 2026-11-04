@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { decodeDictionary, entryKey, makeSearchIndex, normalizePinyin, parseCedict, searchDictionary, toneMarks } from '../web/src/dictionary.ts'
-import { backupSchema, DRAFT_KEY, importDrafts, indexSchema, loadDrafts, mergeCards, saveDrafts, type Store } from '../web/src/model.ts'
+import { backupSchema, DRAFT_KEY, importDrafts, indexSchema, loadDrafts, saveDrafts, type Store } from '../web/src/model.ts'
 import { assertTarget, createRequest, generationInstruction, INSTANCE_ID, loadPending, PENDING_KEY, REPO, REPO_ID, savePending } from '../web/src/generation.ts'
 import { AUTH_KEY, beginOAuth, challenge, disconnect, consumeState, finishOAuth, FLOW_KEY, getSession, ISSUER } from '../web/src/oauth.ts'
 
@@ -54,8 +54,6 @@ test('backup merge keeps newest drafts and rejects unsafe or oversized data', ()
   assert.deepEqual(importDrafts(JSON.stringify({ version: 1, drafts: [draft] }), [updated]), [updated])
   assert.throws(() => importDrafts(JSON.stringify({ version: 1, drafts: [{ ...draft, id: '../../escape' }] }), []))
   assert.throws(() => importDrafts('a'.repeat(10_000_001), []), /too large/)
-  const merged = mergeCards([updated], [published])
-  assert.equal(merged.length, 1); assert.equal(merged[0].published?.image, published.image); assert.equal(merged[0].draft.cue, 'new cue')
   assert.throws(() => indexSchema.parse({ version: 1, associations: [{ ...published, image: 'https://evil.invalid/image.png' }] }))
 })
 test('publication validates briefs and persists uncertain receipt without duplicating', () => {
