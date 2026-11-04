@@ -106,7 +106,9 @@ test('worker crash retry constructs a new worker; numeric library query does not
   await page.getByRole('button', { name: 'Retry', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Dictionary results' })).toBeVisible()
   await page.goto('/'); await page.getByPlaceholder('Search words, memory cues, or songs').fill('1')
-  await expect(page.locator('article')).toHaveCount(0)
+  // The chair definition contains zhang1; that literal match should remain.
+  await expect(page.locator('article')).toHaveCount(1)
+  await expect(page.locator('article')).toContainText('chair')
 })
 test('in-place Word replacement cancels speech and clears prior errors (mock, not audible proof)', async ({ page }) => {
   await page.addInitScript(() => {

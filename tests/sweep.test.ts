@@ -56,3 +56,23 @@ for (const method of ['getVoices', 'addEventListener', 'speak', 'cancel']) test(
   try { const errors: string[] = []; speakWord('椅子', {}, error => errors.push(error)); stopSpeech(); assert.ok(errors.every(e => !e || e.includes('could not play'))) }
   finally { stopSpeech(); if (old) Object.defineProperty(globalThis, 'speechSynthesis', old); else Reflect.deleteProperty(globalThis, 'speechSynthesis'); if (utterance) Object.defineProperty(globalThis, 'SpeechSynthesisUtterance', utterance); else Reflect.deleteProperty(globalThis, 'SpeechSynthesisUtterance') }
 })
+
+test('pinned SDK logger contains blocked storage getters during startup, writes and clear', async () => {
+  const { Logger } = await import('../web/node_modules/@freeappstore/sdk/dist/logger.js')
+  const priorWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  const priorStore = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { addEventListener() {} } })
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { throw new DOMException('blocked', 'SecurityError') } })
+  let logger: InstanceType<typeof Logger> | undefined
+  try {
+    assert.doesNotThrow(() => { logger = new Logger('test', 'https://example.invalid', { token: null } as any) })
+    assert.doesNotThrow(() => logger!.info('memory only'))
+    assert.equal(logger!.entries().length, 1)
+    assert.doesNotThrow(() => logger!.clear())
+    assert.equal(logger!.entries().length, 0)
+  } finally {
+    logger?.destroy()
+    if (priorWindow) Object.defineProperty(globalThis, 'window', priorWindow); else Reflect.deleteProperty(globalThis, 'window')
+    if (priorStore) Object.defineProperty(globalThis, 'localStorage', priorStore); else Reflect.deleteProperty(globalThis, 'localStorage')
+  }
+})

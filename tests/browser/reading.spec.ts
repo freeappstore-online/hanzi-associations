@@ -27,7 +27,8 @@ test('word taps speak Chinese with local Mandarin, cancel on navigation and edit
   await page.getByRole('button', { name: 'Copy to local drafts' }).first().click()
   await page.getByRole('dialog').locator('.word-hanzi').click()
   await page.getByRole('button', { name: 'Save draft', exact: true }).click()
-  expect(await page.evaluate(() => (window as any).speechTest.cancels)).toBe(3)
+  await expect(page.getByRole('dialog')).toBeHidden()
+  await expect.poll(() => page.evaluate(() => (window as any).speechTest.cancels)).toBe(3)
   expect(calls).toEqual([])
 })
 for (const mode of ['delayed', 'missing', 'unsupported', 'error']) test(`speech ${mode}`, async ({ page }) => {

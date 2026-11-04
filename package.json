@@ -8,7 +8,10 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
-    ]
+    ],
+    "patchedDependencies": {
+      "@freeappstore/sdk@0.16.6": "patches/@freeappstore__sdk@0.16.6.patch"
+    }
   },
   "repository": {
     "type": "git",

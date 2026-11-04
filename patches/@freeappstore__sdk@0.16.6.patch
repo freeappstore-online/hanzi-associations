@@ -1,0 +1,43 @@
+diff --git a/dist/logger.js b/dist/logger.js
+index be9451f02ad06d606d33d8a97b164db9e7f30ff5..49dc1c44fcf6a2cb0a108a1c9ae99b29968c4bbd 100644
+--- a/dist/logger.js
++++ b/dist/logger.js
+@@ -61,8 +61,12 @@ export class Logger {
+         this.buffer = [];
+         this.uploadedThrough = 0;
+         this.evicted = 0;
+-        if (typeof localStorage !== 'undefined') {
+-            localStorage.removeItem(`${STORAGE_KEY_PREFIX}${this.appId}`);
++        try {
++            if (typeof localStorage !== 'undefined') {
++                localStorage.removeItem(`${STORAGE_KEY_PREFIX}${this.appId}`);
++            }
++        } catch {
++            // Storage getters and methods can throw in restricted browsers.
+         }
+     }
+     /** Force upload pending logs to server now. */
+@@ -125,9 +129,9 @@ export class Logger {
+     // were already uploaded, so a reload doesn't send them again (#280) while
+     // entries a crash left behind still go out once.
+     saveToStorage() {
+-        if (typeof localStorage === 'undefined')
+-            return;
+         try {
++            if (typeof localStorage === 'undefined')
++                return;
+             const entries = this.buffer.slice(-STORAGE_LIMIT);
+             const skipped = this.buffer.length - entries.length;
+             const uploadedInBuffer = this.uploadedThrough - this.evicted - skipped;
+@@ -139,9 +143,9 @@ export class Logger {
+         }
+     }
+     loadFromStorage() {
+-        if (typeof localStorage === 'undefined')
+-            return;
+         try {
++            if (typeof localStorage === 'undefined')
++                return;
+             const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${this.appId}`);
+             if (!raw)
+                 return;

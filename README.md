@@ -129,7 +129,8 @@ reloads. First download requires a connection; denied cache access or clearing
 browser data removes this offline capability. Corrupt cached bytes are rejected
 and downloaded again when online. Publication data is never precached.
 Draft writes merge the latest stored versions under Web Locks, with cross-tab
-synchronization. Without Web Locks the merge is best effort: simultaneous tabs
+synchronization. For the same draft ID, the newest `updatedAt` wins; equal
+timestamps retain the stored version. Without Web Locks the merge is best effort: simultaneous tabs
 are not guaranteed safe. Failed saves remain exportable in the current tab.
 Browsers need DecompressionStream, Web Crypto and Web Locks for full support.
 Songs are title/artist with an external YouTube search link; no audio is copied.
@@ -161,3 +162,8 @@ network access. There are no app audio API or PAGS calls, recordings, or autopla
 One utterance runs at a time and stops on navigation or closing its word/editor.
 Automated speech tests use mocks; audible playback on physical devices still
 needs device validation.
+
+Yi pins a small pnpm patch for `@freeappstore/sdk@0.16.6`: the logger's
+localStorage getter checks must sit inside its storage error guards so restricted
+browsers can start the app. Upstream tracking: [platform #341](https://github.com/freeappstore-online/platform/issues/341).
+Remove the patch when upgrading to an SDK release containing that fix.
