@@ -258,18 +258,17 @@ replacement, navigation and component removal. Speech is user initiated and
 makes no application API/PAGS requests. Browser/OS remote voices may use network.
 Tests mock speech events and do not demonstrate audible device output.
 
-Issue #5 handoff verification: 61 unit tests passed (also rerun with concurrency
-2), all six association assets validated, and an earlier production build plus
-two styling checks passed. FAS hard checks passed with the same two existing
-warnings. The broad two-worker browser run finished with 56 passing and 6 failing:
-four new preference checks targeted a data attribute not forwarded by SDK Card
-(corrected to the labeled preview); one mobile test encountered missing sw.js
-because preview overlapped PWA generation; one existing desktop ownership test
-exceeded its overall timeout on the overloaded runner. Default mobile/desktop
-lookup screenshots were inspected. Maximum-size screenshot checks remain pending.
-The subsequent build passed TypeScript and Vite bundling but was terminated with
-SIGTERM before completing PWA generation, so its chained browser rerun did not
-start. The final decorative draft-Hanzi removal has not been rebuilt. Root is
-responsible for final build, browser verification, maximum-size screenshots and
-deployment after this bundle handoff. Do not interpret this as 62 browser passes
-or audible physical-device speech validation. No push or generation was attempted.
+Issue #5 final verification: the exact coder implementation commit
+`2b40d936a05838da7451d5f9afd3f6d0564020c7` passed a fresh production build
+(including PWA generation), 61 unit tests, six association validations, two
+styling checks, and all 62 desktop/mobile browser tests in the delivery checkout.
+An independent browser check confirmed per-setting persistence, per-syllable
+contours, Chinese speech text, and refusal of a network-only voice when offline.
+Speech was mocked; these checks do not establish audible physical-device output.
+Desktop and 320px mobile screenshots were inspected, including maximum-size
+word/editor views. The public association index and all six images are unchanged.
+
+The initial remote browser run had four incorrect SDK Card selectors and two
+build/runtime timing failures. Corrected selectors and a completed build passed
+the full suite above. No image request was dispatched or retried, and no remote
+credentials were changed during implementation or delivery.
